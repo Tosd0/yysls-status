@@ -3,6 +3,9 @@
 export const OK_RATIO = 0.9; // 能连上的比例不低于这个算正常
 export const DAYS = 30;
 export const MAX_INCIDENTS = 20;
+export const PERIOD = 180; // 和 wrangler.toml 里的 cron 一致，每 3 分钟检测一次
+// 服务器都连得上时一轮几秒就写进 KV；有连不上的要等超时，会晚到 20 秒左右，那段靠 10 秒重试补上
+const MIN_RUN = 5;
 const RANK = { up: 0, partial: 1, down: 2 };
 const CST_MS = 8 * 3600 * 1000;
 
@@ -50,6 +53,11 @@ export function record(state, rec) {
     open.worst = rec.s;
   }
   return s;
+}
+
+// 接口缓存几秒：卡在下一轮结果最早写进来的时刻过期；到点了还没等到，10 秒后再问
+export function maxAge(checkedAt, now) {
+  return Math.max(10, checkedAt + PERIOD + MIN_RUN - now);
 }
 
 // 页面要的数据：近 DAYS 天逐天补齐，没数据的天给 null

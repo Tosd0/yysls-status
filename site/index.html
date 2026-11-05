@@ -5,105 +5,298 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>燕云十六声服务器状态</title>
 <meta name="description" content="燕云十六声服务器状态（非官方）：登录服务器能不能连上、近 30 天的可用情况，以及停服和异常记录">
+<meta name="color-scheme" content="light dark">
+<link rel="preload" href="/fonts/EBGaramond-Latin-Variable.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/Jost-Latin-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <style>
+/* 字体：只自带 EB Garamond 和 Jost 的拉丁子集，汉字落到系统里的宋体 / 黑体，国内访问不依赖外部字体服务 */
+@font-face { font-family: "EB Garamond"; src: url(/fonts/EBGaramond-Latin-Variable.woff2) format("woff2"); font-weight: 400 800; font-style: normal; font-display: swap; unicode-range: U+0000-024F, U+2000-206F, U+2190-21FF; }
+@font-face { font-family: "EB Garamond"; src: url(/fonts/EBGaramond-Latin-Variable-Italic.woff2) format("woff2"); font-weight: 400 800; font-style: italic; font-display: swap; unicode-range: U+0000-024F, U+2000-206F; }
+@font-face { font-family: Jost; src: url(/fonts/Jost-Latin-Variable.woff2) format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; unicode-range: U+0000-024F, U+2000-206F, U+2190-21FF; }
+
+/* 色：纸 Paper（浅色）/ 漆 Lacquer（深色），跟系统走 */
 :root {
-  --bg: #f6f5f2; --card: #ffffff; --text: #1d1d1f; --muted: #6e6e73; --line: #e3e1dc;
-  --up: #2f9e5b; --partial: #d99a1c; --down: #d4483b; --unknown: #a1a1a6; --empty: #e9e7e2;
+  --ground: #f5f1e8; --ground-raised: #ebe4d6;
+  --ink: #2a2622; --ink-muted: #675d52; --rule: #8a7c6a;
+  --gilt: #82603a; --mark: #a3302b;
+  --slip: #e3b84b; --on-slip: #4a2410; --shadow-slip: 1px 2px 4px #4a24102e;
+  --focus-ring: 0 0 0 2px #f5f1e8, 0 0 0 4px #2a2622;
+  /* 状态色：状态页的老规矩（绿 / 黄 / 红），色相往这套色板里的松绿、赭黄、朱砂靠；在地色上都 ≥3:1 */
+  --ok: #4a7c59; --warn: #a87822; --bad: #a3302b; --empty: #e0d8c8;
+  --serif: "EB Garamond", "Noto Serif SC", "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", STSong, SimSun, serif;
+  --sans: Jost, "Noto Sans SC", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --axis: 28px;
+  --ease: cubic-bezier(.2, .6, .2, 1);
 }
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #141414; --card: #1e1e1f; --text: #f2f2f2; --muted: #a0a0a5; --line: #2e2e30;
-    --up: #3fbf74; --partial: #e6ac36; --down: #ec5f52; --unknown: #6e6e73; --empty: #2a2a2c;
+  :root:not([data-theme="paper"]) {
+    --ground: #1c1a17; --ground-raised: #29261f;
+    --ink: #eee8de; --ink-muted: #a9a196; --rule: #7c7266;
+    --gilt: #e6c28b; --mark: #c84a3e;
+    --shadow-slip: 1px 2px 4px #00000080;
+    --focus-ring: 0 0 0 2px #1c1a17, 0 0 0 4px #eee8de;
+    --ok: #79a886; --warn: #e3b84b; --bad: #c84a3e; --empty: #35312a;
   }
 }
-* { box-sizing: border-box; }
-body {
-  margin: 0; background: var(--bg); color: var(--text);
-  font: 15px/1.6 -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+:root[data-theme="lacquer"] {
+  --ground: #1c1a17; --ground-raised: #29261f;
+  --ink: #eee8de; --ink-muted: #a9a196; --rule: #7c7266;
+  --gilt: #e6c28b; --mark: #c84a3e;
+  --shadow-slip: 1px 2px 4px #00000080;
+  --focus-ring: 0 0 0 2px #1c1a17, 0 0 0 4px #eee8de;
+  --ok: #79a886; --warn: #e3b84b; --bad: #c84a3e; --empty: #35312a;
 }
-main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
-h1 { font-size: 22px; margin: 0; letter-spacing: .02em; }
-h2 { font-size: 15px; margin: 0 0 12px; color: var(--muted); font-weight: 600; }
-.sub { margin: 2px 0 24px; color: var(--muted); font-size: 13px; }
-section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
-.now { display: flex; gap: 14px; align-items: center; }
-.dot { width: 14px; height: 14px; border-radius: 50%; flex: none; background: var(--unknown); }
-.now .dot { width: 18px; height: 18px; box-shadow: 0 0 0 6px color-mix(in srgb, currentColor 18%, transparent); }
-.label { font-size: 22px; font-weight: 700; }
-.meta, .note, .pick { color: var(--muted); font-size: 13px; }
-.stale { margin: 12px 0 0; color: var(--partial); font-size: 13px; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(18px, 1fr)); gap: 5px; }
-.grid button, .bars button { border: 0; padding: 0; cursor: pointer; background: var(--empty); }
-.grid button { aspect-ratio: 1; border-radius: 4px; }
-.bars { display: flex; gap: 3px; height: 36px; }
-.bars button { flex: 1; border-radius: 3px; min-width: 0; }
-button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
-.axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-top: 6px; }
-.pick { min-height: 1.6em; margin: 10px 0 0; }
-.s-up { background: var(--up) !important; color: var(--up); }
-.s-partial { background: var(--partial) !important; color: var(--partial); }
-.s-down { background: var(--down) !important; color: var(--down); }
-.s-unknown { background: var(--unknown) !important; color: var(--unknown); }
-ol { list-style: none; margin: 0; padding: 0; }
-li { display: flex; gap: 10px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
-li:first-child { border-top: 0; padding-top: 0; }
-.badge { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; color: #fff !important; }
-.when { font-variant-numeric: tabular-nums; }
-footer { color: var(--muted); font-size: 12px; line-height: 1.8; padding: 0 2px; }
-a { color: inherit; }
+
+* { box-sizing: border-box; }
+html { overflow-x: clip; }
+body {
+  margin: 0; background: var(--ground); color: var(--ink);
+  font: 400 14px/1.75 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+}
+main { max-width: 880px; margin: 0 auto; padding: 56px 16px 64px; }
+a { color: inherit; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+a:hover { text-decoration-color: currentColor; }
+.muted { color: var(--ink-muted); }
+.meta { font-size: 12px; line-height: 1.55; color: var(--ink-muted); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* 页头 */
+.masthead h1 {
+  margin: 0; font: 500 40px/1.3 var(--serif); color: var(--gilt); letter-spacing: .04em;
+}
+.masthead h1 span { white-space: nowrap; }
+.masthead .caps {
+  margin: 8px 0 0; font: 500 15px/1.5 var(--serif); letter-spacing: .14em; color: var(--ink-muted);
+}
+.masthead .meta { margin: 12px 0 0; }
+
+/* 此刻：状态词是整页最大的字，左边一根标记条一直贴到页面边缘 */
+.now { position: relative; margin-top: 56px; padding-left: var(--axis); }
+.now .bar {
+  position: absolute; top: calc(.55 * var(--display)); right: calc(100% - var(--axis) + 16px);
+  width: 100vw; height: 10px; background: var(--rule);
+  transform-origin: right center;
+}
+.now[data-s="up"] .bar { background: var(--ok); }
+.now[data-s="partial"] .bar { background: var(--warn); }
+.now[data-s="down"] .bar { background: var(--bad); }
+.now { --display: clamp(52px, 14vw, 88px); }
+.word {
+  margin: 0; font: 500 var(--display)/1.05 var(--serif); letter-spacing: .06em; color: var(--ink);
+}
+.word .ch { display: inline-block; }
+.en {
+  margin: 8px 0 0; font: italic 400 22px/1.35 var(--serif); color: var(--ink-muted);
+}
+.facts { margin: 24px 0 0; }
+.facts p { margin: 0; }
+.facts .count { font: 300 19px/1.35 var(--sans); font-variant-numeric: tabular-nums; }
+.slip {
+  display: inline-block; margin: 16px 0 0; padding: 1px 8px;
+  background: var(--slip); color: var(--on-slip); box-shadow: var(--shadow-slip);
+  font: 600 13px/1.6 var(--sans); letter-spacing: .1em;
+}
+.stale-text { margin: 8px 0 0; max-width: 32em; }
+/* 下次检测：字和倒计时中间夹一根细线，金色 3 分钟从左走到右；检测中线卷成小环转圈，结果回来再展开 */
+.facts .next { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.next[hidden] { display: none; }
+.next .clock { color: var(--ink); }
+.next .clock:empty { display: none; }
+.dial { flex: none; overflow: visible; }
+.dial path { fill: none; }
+.dial .track { stroke: var(--empty); }
+.dial .fill { stroke: var(--gilt); }
+
+/* 节：中文栏头 + 英文，后面一根 gilt 栏头线越过内容出血到画面右边 */
+section { margin-top: 64px; }
+.head { display: flex; align-items: baseline; gap: 12px; }
+.head h2 { margin: 0; font: 500 20px/1.45 var(--serif); white-space: nowrap; }
+.head .latin { font: italic 400 15px/1.45 var(--serif); color: var(--ink-muted); white-space: nowrap; }
+.head .line {
+  flex: 1; align-self: center; height: 1px; background: var(--gilt);
+  margin-right: calc(50% - 50vw); transform-origin: left center;
+}
+.body { padding-left: var(--axis); margin-top: 24px; }
+
+/* 一个方块一台服务器，一根柱子一天。直角，不加边框；选中时外面空一圈地色再描一圈墨 */
+.tick {
+  position: relative; flex: none; padding: 0; margin: 0;
+  border: 0; border-radius: 0; cursor: pointer; background: var(--empty);
+  -webkit-tap-highlight-color: transparent;
+}
+.tick.ok { background: var(--ok); }
+.tick.partial { background: var(--warn); }
+.tick.down { background: var(--bad); }
+.tick:focus { outline: none; }
+.tick:hover, .tick.on, .tick:focus-visible { box-shadow: var(--focus-ring); z-index: 1; }
+
+.comb { display: grid; grid-template-columns: repeat(auto-fill, 16px); gap: 5px; }
+.comb .tick { width: 16px; height: 16px; }
+
+.group + .group { margin-top: 24px; }
+.group .meta { margin: 0 0 8px; }
+
+.pick { margin: 16px 0 0; min-height: 1.5em; font-size: 13px; line-height: 1.5; color: var(--ink-muted); }
+.pick.set { color: var(--ink); }
+
+/* 近 30 天：一根 gilt 主轴，每天一根线从轴上往下长 */
+.uptime { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+.numeral { font: 200 52px/1 var(--sans); letter-spacing: -.01em; color: var(--gilt); }
+.timeline { position: relative; }
+.days { display: flex; gap: 3px; align-items: flex-end; }
+.days .tick { flex: 1 1 0; min-width: 0; height: 40px; transform-origin: center bottom; }
+.timeline .axis {
+  height: 1px; background: var(--gilt); margin: 6px calc(50% - 50vw) 0 0; transform-origin: left center;
+}
+.ends { display: flex; justify-content: space-between; margin-top: 8px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 20px 0 0; padding: 0; list-style: none; }
+.legend li { display: flex; align-items: center; gap: 8px; }
+.key { width: 10px; height: 10px; flex: none; background: var(--empty); }
+.key.ok { background: var(--ok); }
+.key.partial { background: var(--warn); }
+.key.down { background: var(--bad); }
+
+/* 记录：挂在一根竖线上，竖线上下各多出 24px */
+.log { position: relative; margin: 0; padding: 24px 0 24px 12px; list-style: none; }
+.log::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 1px; background: var(--rule);
+  transform-origin: center top;
+}
+.log li + li { margin-top: 24px; }
+.log .kind { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 1.5; }
+.log .kind i { display: inline-block; width: 10px; height: 10px; }
+.log .kind i.down { background: var(--bad); }
+.log .kind i.partial { background: var(--warn); }
+.log .kind .latin { color: var(--ink-muted); }
+.log .when { margin: 4px 0 0; font: 300 19px/1.35 var(--sans); }
+.log .dur { margin: 2px 0 0; }
+.log .calm { font-size: 14px; }
+
+footer { margin-top: 64px; }
+footer .short { width: 48px; height: 1px; background: var(--rule); margin-bottom: 16px; }
+footer p { margin: 0; max-width: 40em; }
+footer p + p { margin-top: 8px; }
+
+@media (min-width: 720px) {
+  main { padding: 96px 32px 96px; }
+  section { margin-top: 80px; }
+  .masthead h1 { font-size: 40px; }
+  .now { margin-top: 96px; padding-left: 0; }
+  .now .bar { right: calc(100% + 48px); }
+  .facts { display: flex; gap: 32px; align-items: baseline; flex-wrap: wrap; }
+  .facts .next { margin-top: 0; }
+  .body { padding-left: var(--axis); }
+}
+
+/* 宽屏：单人服正好排成一行，方块按宽度放大 */
+@media (min-width: 1100px) {
+  main { max-width: 1280px; }
+  .comb { grid-template-columns: repeat(var(--cols, 50), 1fr); gap: 4px; }
+  .comb .tick { width: auto; height: auto; aspect-ratio: 1; }
+  /* 版心变宽后左边留白少了，状态词往里收一档，让标记条还有长度 */
+  .now { padding-left: calc(2 * var(--axis)); }
+  .now .bar { right: calc(100% - 2 * var(--axis) + 20px); }
+}
+
+/* 出场顺序：先标题，再线，最后正文。只在第一次加载时播放 */
+@media (prefers-reduced-motion: no-preference) {
+  .intro .word .ch { animation: rise 700ms var(--ease) both; animation-delay: calc(var(--i) * 80ms); }
+  .intro .en, .intro .facts { animation: fade 600ms ease both; animation-delay: calc(var(--n) * 80ms + 500ms); }
+  .intro .now .bar { animation: drawX 1.2s var(--ease) both; }
+  .intro .head .line, .intro .timeline .axis { animation: drawX 1.2s var(--ease) both; animation-delay: .4s; }
+  .intro .now .bar { animation-name: drawXr; }
+  .intro .comb .tick { animation: fade 400ms ease both; animation-delay: calc(.7s + var(--k, 0) * 10ms); }
+  .intro .days .tick { animation: drawY 700ms var(--ease) both; animation-delay: calc(.7s + var(--k, 0) * 20ms); }
+  .intro .log::before { animation: drawY 1.2s var(--ease) both; animation-delay: .6s; }
+  .intro .body > *, .intro .log li { animation: fade 600ms ease both; animation-delay: 1s; }
+}
+@keyframes rise { from { opacity: 0; transform: translateY(.2em); } }
+@keyframes fade { from { opacity: 0; } }
+@keyframes drawX { from { transform: scaleX(0); } }
+@keyframes drawXr { from { transform: scaleX(0); } }
+@keyframes drawY { from { transform: scaleY(0); } }
 </style>
 </head>
-<body>
+<body class="intro">
 <main>
-  <h1>燕云十六声 服务器状态</h1>
-  <p class="sub">玩家自建的非官方页面 · 每 3 分钟检测一次 · 时间为北京时间</p>
+  <header class="masthead">
+    <h1><span>燕云十六声</span> <span>服务器状态</span></h1>
+    <p class="caps">WHERE WINDS MEET · SERVER STATUS</p>
+    <p class="meta">本页数据仅供参考，一切以<a href="https://www.yysls.cn/news/update/" target="_blank" rel="noopener">官方公告</a>为准 · 检查间隔 3 分钟</p>
+  </header>
 
-  <section aria-live="polite">
-    <div class="now">
-      <span class="dot" id="now-dot"></span>
-      <div>
-        <div class="label" id="now-label">加载中…</div>
-        <div class="meta" id="now-meta"></div>
-      </div>
+  <div class="now" id="now" data-s="unknown">
+    <i class="bar" aria-hidden="true"></i>
+    <!-- 只播报状态和台数；时间每秒都在走，放进播报区会一直念 -->
+    <p class="word" id="now-word" aria-live="polite"><span class="ch" style="--i:0">加</span><span class="ch" style="--i:1">载</span><span class="ch" style="--i:2">中</span></p>
+    <p class="en" id="now-en" style="--n:3">Loading</p>
+    <div class="facts" id="now-facts" style="--n:3">
+      <p class="count" id="now-count" aria-live="polite">&nbsp;</p>
+      <p class="meta num" id="now-meta"></p>
+      <p class="meta num next" id="next" aria-hidden="true" hidden><span id="next-label">下次检测</span><svg class="dial" viewBox="0 0 66 24" width="66" height="24"><path class="track" id="dial-track"/><path class="fill" id="dial-fill"/></svg><span class="clock" id="next-clock"></span></p>
     </div>
-    <p class="stale" id="stale" hidden></p>
+    <div id="stale" hidden>
+      <span class="slip">数据延迟</span>
+      <p class="meta stale-text" id="stale-text"></p>
+    </div>
+  </div>
+
+  <section>
+    <div class="head"><h2>登录服务器</h2><span class="latin">Login Servers</span><i class="line" aria-hidden="true"></i></div>
+    <div class="body">
+      <div id="groups"></div>
+      <p class="pick" id="grid-pick">点一个方块看是哪台服务器</p>
+    </div>
   </section>
 
   <section>
-    <h2>登录服务器</h2>
-    <div class="grid" id="grid"></div>
-    <p class="pick" id="grid-pick">点一个方块看是哪台服务器</p>
+    <div class="head"><h2>近 30 天</h2><span class="latin">Last 30 Days</span><i class="line" aria-hidden="true"></i></div>
+    <div class="body">
+      <div class="uptime"><span class="numeral num" id="uptime">—</span></div>
+      <div class="timeline">
+        <div class="days" id="days"></div>
+        <div class="axis" aria-hidden="true"></div>
+      </div>
+      <div class="ends meta"><span id="d-first">30 天前</span><span>今天</span></div>
+      <ul class="legend meta" aria-hidden="true">
+        <li><span class="key ok"></span>全天正常</li>
+        <li><span class="key partial"></span>出现过部分异常</li>
+        <li><span class="key down"></span>出现过停服</li>
+        <li><span class="key"></span>没有数据</li>
+      </ul>
+      <p class="pick" id="days-pick">点一根柱子看当天情况</p>
+    </div>
   </section>
 
   <section>
-    <h2>近 30 天</h2>
-    <div class="bars" id="bars"></div>
-    <div class="axis"><span>30 天前</span><span>今天</span></div>
-    <p class="pick" id="bars-pick">点一根柱子看当天情况</p>
+    <div class="head"><h2>停服和异常记录</h2><span class="latin">Incidents</span><i class="line" aria-hidden="true"></i></div>
+    <div class="body">
+      <ol class="log" id="incidents"></ol>
+    </div>
   </section>
 
-  <section>
-    <h2>停服和异常记录</h2>
-    <ol id="incidents"></ol>
-    <p class="note">因为每隔几分钟才测一次，这里记的是第一次测到异常的时间，实际开始的时间会早一点。</p>
-  </section>
-
-  <footer>
-    这里只检测能不能连上官方登录服务器，连得上不代表所有玩法都正常。一切以
-    <a href="https://www.yysls.cn/news/update/" target="_blank" rel="noopener">官方公告</a>和游戏内公告为准。
-    · <a href="https://github.com/Tosd0/yysls-status" target="_blank" rel="noopener">源码</a>
+  <footer class="meta">
+    <div class="short" aria-hidden="true"></div>
+    <p><a href="https://github.com/Tosd0/yysls-status" target="_blank" rel="noopener">源码</a> · <i>Unofficial, made by players</i></p>
   </footer>
 </main>
 
 <script>
 const LABEL = { up: "运行正常", partial: "部分异常", down: "停服中", unknown: "检测失败" };
+const EN = { up: "All servers reachable", partial: "Partial outage", down: "Servers down", unknown: "Check failed" };
 const SHORT = { up: "正常", partial: "部分异常", down: "停服" };
+const SHORT_EN = { partial: "Partial outage", down: "Down" };
 const timeFmt = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false,
 });
+const clockFmt = new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hour12: false });
+const cstDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" });
 const dayFmt = new Intl.DateTimeFormat("zh-CN", { timeZone: "UTC", month: "long", day: "numeric" });
 const $ = (id) => document.getElementById(id);
 const at = (sec) => timeFmt.format(sec * 1000);
+const sameDay = (a, b) => cstDay.format(a * 1000) === cstDay.format(b * 1000);
 
 function span(sec) {
   const m = Math.max(1, Math.round(sec / 60));
@@ -113,81 +306,241 @@ function span(sec) {
   return `${h} 小时${m % 60 ? ` ${m % 60} 分` : ""}`;
 }
 
-// 方块和柱子共用：点按 / 聚焦时把说明写到下面那行，手机上也能看
-function cell(cls, info, pickId) {
-  const b = document.createElement("button");
-  b.className = cls;
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+}
+
+// 线和天共用：点按 / 聚焦 / 悬停时把说明写到下面那行，手机上也能看
+function tick(cls, info, pickId, k) {
+  const b = el("button", `tick ${cls}`);
+  b.type = "button";
   b.title = info;
   b.setAttribute("aria-label", info);
-  const show = () => ($(pickId).textContent = info);
+  b.style.setProperty("--k", k);
+  const show = () => {
+    const pick = $(pickId);
+    pick.textContent = info;
+    pick.classList.add("set");
+    pick.parentNode.querySelectorAll(".tick.on").forEach((t) => t.classList.remove("on"));
+    b.classList.add("on");
+  };
   b.addEventListener("click", show);
   b.addEventListener("focus", show);
   b.addEventListener("mouseenter", show);
   return b;
 }
 
+function setWord(text) {
+  const w = $("now-word");
+  if (w.dataset.text === text) return;
+  w.dataset.text = text;
+  w.replaceChildren(...[...text].map((c, i) => {
+    const s = el("span", "ch", c);
+    s.style.setProperty("--i", i);
+    return s;
+  }));
+  $("now-en").style.setProperty("--n", text.length);
+  $("now-facts").style.setProperty("--n", text.length);
+}
+
+function resetPick(id, hint) {
+  const p = $(id);
+  p.textContent = hint;
+  p.classList.remove("set");
+}
+
+// Worker 每 3 分钟检测一次
+const PERIOD = 180;
+
+// 倒计时那根线：平时是进度线；到点了结果还没回来，两端往上翘、弯成首尾相接的小环，一段金色在环上转圈，
+// 结果回来再展开成线。弯的时候线长不变，所以环的直径由线长定：64px 的线弯成直径约 20px 的环
+const DIAL_LEN = 64, DIAL_H = 24, DIAL_PAD = 1; // 和 .dial 的 viewBox 对应
+const still = matchMedia("(prefers-reduced-motion: reduce)");
+// u 是弯曲程度（0 直线、1 圆环）；len、start 是金色那段的长度和起点，按全长的百分比算
+const dial = { checking: false, progress: 0, u: 0, len: 0, start: 0, last: 0, raf: 0 };
+
+// 从中点往两边量，处处同样弯；弯好后左边贴齐、上下居中，卷成环时紧挨着前面的字
+function bend(u) {
+  const k = (2 * Math.PI * u) / DIAL_LEN, pts = [];
+  for (let i = 0; i <= 48; i++) {
+    const s = (i / 48 - 0.5) * DIAL_LEN;
+    pts.push(k < 1e-6 ? [s, 0] : [Math.sin(k * s) / k, (Math.cos(k * s) - 1) / k]);
+  }
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const dx = DIAL_PAD - Math.min(...xs), dy = DIAL_H / 2 - (Math.min(...ys) + Math.max(...ys)) / 2;
+  return pts.map(([x, y]) => [x + dx, y + dy]);
+}
+
+function drawDial() {
+  const pts = bend(dial.u);
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+  const d = "M" + pts.map(([x, y]) => `${x.toFixed(2)} ${y.toFixed(2)}`).join("L");
+  for (const p of [$("dial-track"), $("dial-fill")]) {
+    p.setAttribute("d", d);
+    p.setAttribute("stroke-width", 1 + dial.u / 2); // 环比线粗一点，小尺寸下才看得清
+  }
+  const len = Math.min(1, Math.max(0, dial.len / 100)) * total;
+  $("dial-fill").setAttribute("stroke-dasharray", `${len} ${total - len}`);
+  $("dial-fill").setAttribute("stroke-dashoffset", (-dial.start / 100) * total);
+}
+
+function stepDial(t) {
+  const dt = dial.last ? Math.min(0.1, (t - dial.last) / 1000) : 0;
+  dial.last = t;
+  const spin = dial.checking && dial.u > 0.9 && !still.matches;
+  const uT = dial.checking ? 1 : 0;
+  // 卷成环之前金色保持满格，卷好后缩成一小段转圈；减少动态效果时就停在一个满的环上
+  const lenT = !dial.checking ? dial.progress * 100 : spin ? 28 : 100;
+  // 倒计时每秒走的那一点直接跳过去，不用为它一直跑动画
+  const small = !dial.checking && dial.u < 1e-3 && Math.abs(lenT - dial.len) < 2;
+  const ease = still.matches || small ? 1 : 1 - Math.exp(-dt / 0.16);
+  dial.u += (uT - dial.u) * ease;
+  dial.len += (lenT - dial.len) * ease;
+  // 转圈时顺时针走，一圈约 1.1 秒；不转时回到线头，挑近的方向
+  const back = ((-dial.start % 100) + 150) % 100 - 50;
+  dial.start = spin ? (((dial.start - dt * 90) % 100) + 100) % 100 : dial.start + back * ease;
+  const settled = !spin && Math.abs(uT - dial.u) < 1e-3 && Math.abs(lenT - dial.len) < 0.05 && Math.abs(back) < 0.05;
+  if (settled) Object.assign(dial, { u: uT, len: lenT, start: 0, last: 0, raf: 0 });
+  drawDial();
+  if (!settled) dial.raf = requestAnimationFrame(stepDial);
+}
+
+function kickDial() {
+  if (!dial.raf) dial.raf = requestAnimationFrame(stepDial);
+}
+
+// 文字没变就不动 DOM
+function put(id, text) {
+  if ($(id).textContent !== text) $(id).textContent = text;
+}
+
+// 「最后检测」、下次检测倒计时和过期提示跟着时间走，每秒更新，不用等新数据
+function meta(d) {
+  const age = Date.now() / 1000 - d.checked_at;
+  put("now-meta", `最后检测 ${at(d.checked_at)} · ${span(age)}前`);
+  // 到点了结果还没拿到就说正在检测；晚到下下轮都该出结果了，多半是检测停了，倒计时不再显示
+  const left = Math.ceil(PERIOD - age);
+  const hidden = age >= PERIOD * 2;
+  $("next").hidden = hidden;
+  put("next-label", left > 0 ? "下次检测" : "正在检测");
+  put("next-clock", left > 0 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : "");
+  dial.checking = left <= 0 && !hidden;
+  dial.progress = Math.min(1, Math.max(0, age / PERIOD));
+  kickDial();
+  const late = age > 15 * 60;
+  $("stale").hidden = !late;
+  if (late) $("stale-text").textContent = `已经 ${span(age)}没更新了，可能是定时检测延迟了，过会儿再来看看。`;
+}
+
 function render(d) {
   const now = Date.now() / 1000;
-  $("now-dot").className = `dot s-${d.status}`;
-  $("now-label").textContent = LABEL[d.status];
-  $("now-meta").textContent = d.total
-    ? `${d.total} 台登录服务器里 ${d.ok} 台能连上 · 最后检测 ${at(d.checked_at)}（${span(now - d.checked_at)}前）`
-    : `没拉到官方服务器列表 · 最后检测 ${at(d.checked_at)}（${span(now - d.checked_at)}前）`;
-  const late = now - d.checked_at > 15 * 60;
-  $("stale").hidden = !late;
-  if (late) $("stale").textContent = `数据已经 ${span(now - d.checked_at)}没更新了，可能是定时检测延迟了，过会儿再来看看。`;
 
-  // 刷新后旧的说明可能已经过时，先清回提示语
-  $("grid-pick").textContent = "点一个方块看是哪台服务器";
-  $("bars-pick").textContent = "点一根柱子看当天情况";
-  $("grid").replaceChildren(...d.machines.map((m) =>
-    cell(m.ok ? "s-up" : "s-down", `${m.name} · ${m.ok ? `${m.ms} ms` : "连不上"}`, "grid-pick")));
+  // 此刻
+  $("now").dataset.s = d.status;
+  setWord(LABEL[d.status]);
+  $("now-en").textContent = EN[d.status];
+  $("now-count").innerHTML = "";
+  if (d.total) {
+    $("now-count").textContent = `${d.ok} / ${d.total}`;
+  } else {
+    $("now-count").textContent = "没拉到服务器列表";
+  }
 
-  $("bars").replaceChildren(...d.days.map((day) => {
-    const name = dayFmt.format(new Date(day.date));
-    const info = day.checks
-      ? `${name} · ${day.worst === "up" ? "全天正常" : `最差：${SHORT[day.worst]}`} · 可用率 ${Math.round(day.up * 100)}% · ${day.checks} 次检测`
-      : `${name} · 没有数据`;
-    return cell(day.worst ? `s-${day.worst}` : "", info, "bars-pick");
+  // 登录服务器：单人服和大世界服分两排
+  resetPick("grid-pick", "点一个方块看是哪台服务器");
+  const groups = [
+    ["单人服", d.machines.filter((m) => !m.name.includes("大世界"))],
+    ["大世界服", d.machines.filter((m) => m.name.includes("大世界"))],
+  ].filter(([, ms]) => ms.length);
+  let k = 0;
+  $("groups").style.setProperty("--cols", Math.max(...groups.map(([, ms]) => ms.length), 1));
+  $("groups").replaceChildren(...groups.map(([name, ms]) => {
+    const g = el("div", "group");
+    const up = ms.filter((m) => m.ok).length;
+    g.append(el("p", "meta num", `${name} · ${up} / ${ms.length}`));
+    const comb = el("div", "comb");
+    comb.append(...ms.map((m) => tick(m.ok ? "ok" : "down", `${m.name} · ${m.ok ? `${m.ms} ms` : "连不上"}`, "grid-pick", k++)));
+    g.append(comb);
+    return g;
   }));
 
+  // 近 30 天
+  resetPick("days-pick", "点一根柱子看当天情况");
+  let checks = 0, ups = 0;
+  $("days").replaceChildren(...d.days.map((day, i) => {
+    const name = dayFmt.format(new Date(day.date));
+    if (!day.checks) return tick("empty", `${name} · 没有数据`, "days-pick", i);
+    checks += day.checks;
+    ups += day.up * day.checks;
+    const info = `${name} · ${day.worst === "up" ? "全天正常" : `最差：${SHORT[day.worst]}`} · 可用率 ${Math.floor(day.up * 1000) / 10}% · ${day.checks} 次检测`;
+    return tick(day.worst === "up" ? "ok" : day.worst, info, "days-pick", i);
+  }));
+  if (d.days.length) $("d-first").textContent = dayFmt.format(new Date(d.days[0].date));
+  // 向下取整，不到 100% 时不会显示成 100%
+  $("uptime").textContent = checks ? `${ups >= checks ? "100" : (Math.floor((ups / checks) * 10000) / 100).toFixed(2)}%` : "—";
+
+  // 记录
   const items = d.incidents.map((it) => {
-    const li = document.createElement("li");
-    const badge = document.createElement("span");
-    badge.className = `badge s-${it.worst}`;
-    badge.textContent = SHORT[it.worst];
-    const when = document.createElement("span");
-    when.className = "when";
+    const li = el("li");
+    const kind = el("p", "kind");
+    kind.style.margin = "0";
+    kind.append(el("i", it.worst), el("span", "", SHORT[it.worst]), el("span", "latin", SHORT_EN[it.worst]));
+    const when = el("p", "when num");
+    const dur = el("p", "dur meta");
     // 从第一次检测起就不正常的事件，真正几点开始的不知道，不写开始时间和时长
-    const before = it.start === d.first_check ? `${at(it.start)} 开始检测时就已经是这样了` : "";
-    if (before) when.textContent = it.end ? `${before}，${at(it.end)} 恢复` : `${before}，到现在还没恢复`;
-    else when.textContent = it.end
-      ? `${at(it.start)} → ${at(it.end)}，持续 ${span(it.end - it.start)}`
-      : `${at(it.start)} 起，还没恢复，已持续 ${span(now - it.start)}`;
-    li.append(badge, when);
+    if (it.start === d.first_check) {
+      when.textContent = it.end ? `→ ${at(it.end)}` : "还没恢复";
+      dur.textContent = it.end ? `${at(it.start)} 开始检测时就已经是这样了，${at(it.end)} 恢复` : `${at(it.start)} 开始检测时就已经是这样了`;
+    } else if (it.end) {
+      when.textContent = `${at(it.start)} → ${sameDay(it.start, it.end) ? clockFmt.format(it.end * 1000) : at(it.end)}`;
+      dur.textContent = `持续 ${span(it.end - it.start)}`;
+    } else {
+      when.textContent = `${at(it.start)} 起`;
+      dur.textContent = `还没恢复，已持续 ${span(now - it.start)}`;
+    }
+    li.append(kind, when, dur);
     return li;
   });
-  if (!items.length) {
-    const li = document.createElement("li");
-    li.textContent = `${at(d.first_check)} 开始检测，到现在还没出过停服或异常`;
-    items.push(li);
-  }
+  if (!items.length) items.push(el("li", "calm", `${at(d.first_check)} 开始检测，到现在还没出过停服或异常。`));
   $("incidents").replaceChildren(...items);
 }
+
+// 上次检测后 3 分 05 秒：下一轮结果最早在这时写进来，Worker 给的接口缓存也在这时过期
+const DUE = PERIOD + 5;
+let data = null;
 
 async function load() {
   try {
     const r = await fetch("/data/status.json", { cache: "no-store" });
     if (!r.ok) throw new Error(r.status);
-    render(await r.json());
+    const d = await r.json();
+    // 还是同一轮的数据就不重画，免得把访客点开的方块说明清掉
+    if (d.checked_at !== data?.checked_at) render(d);
+    data = d;
+    meta(d);
   } catch (e) {
-    $("now-dot").className = "dot s-unknown";
-    $("now-label").textContent = "数据加载失败";
-    $("now-meta").textContent = "过一会儿刷新试试";
+    data = null;
+    $("now").dataset.s = "unknown";
+    setWord("加载失败");
+    $("now-en").textContent = "Could not load data";
+    $("now-count").textContent = "过一会儿刷新试试";
+    $("now-meta").textContent = "";
+    $("next").hidden = true;
+    dial.checking = false;
   }
+  // 动画只在第一次加载时播放，之后刷新数据时直接换内容
+  setTimeout(() => document.body.classList.remove("intro"), 2600);
+  // 到点再拉；到点了还没等到就 10 秒后再试；拉失败、访客时钟不准或检测停了，最多 2 分钟也会再拉一次
+  const age = data ? Date.now() / 1000 - data.checked_at : Infinity;
+  const wait = age < DUE ? DUE - age : age < PERIOD * 2 ? 10 : 120;
+  setTimeout(load, Math.min(wait, 120) * 1000);
 }
 load();
-setInterval(load, 2 * 60 * 1000);
+setInterval(() => data && meta(data), 1000);
 </script>
 </body>
 </html>

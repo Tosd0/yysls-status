@@ -41,7 +41,7 @@ Cloudflare Worker 每 3 分钟跑一次探测，结果累积在 Workers KV 里�
 GET https://yysls-status.netlify.app/data/status.json
 ```
 
-- 数据每 3 分钟更新一次，接口有 60 秒缓存，没必要请求得比这更频繁。
+- 数据每 3 分钟更新一次。响应头 `Cache-Control` 里的 `max-age` 是离下一轮结果出来还有几秒，按它定下次什么时候请求就行，提前请求拿到的也是同一份数据。
 - 请用上面这个地址。`workers.dev` 那个源地址在国内基本打不开，也没有缓存。
 - 表里列出的字段会保持不变；没列出的字段只给本站页面用，随时可能调整。
 

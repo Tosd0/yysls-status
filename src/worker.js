@@ -1,7 +1,7 @@
 // Cloudflare Worker：定时读官方服务器列表、逐台握手、把结果累积进 KV；GET /status.json 给页面数据
 import { connect } from "cloudflare:sockets";
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { classify, parseList, record, view } from "./logic.js";
+import { classify, maxAge, parseList, record, view } from "./logic.js";
 
 const LIST_URL = "https://h72.update.nieapps.com/server_list_prod_b.txt";
 const TIMEOUT_MS = 4000;
@@ -79,8 +79,9 @@ export default {
     const cors = { "Access-Control-Allow-Origin": "*" };
     const state = await env.KV.get("state", "json");
     if (!state) return new Response("no data yet", { status: 503, headers: cors });
-    return Response.json(view(state, Math.floor(Date.now() / 1000)), {
-      headers: { ...cors, "Cache-Control": "public, max-age=60" },
+    const now = Math.floor(Date.now() / 1000);
+    return Response.json(view(state, now), {
+      headers: { ...cors, "Cache-Control": `public, max-age=${maxAge(state.last.t, now)}` },
     });
   },
 };

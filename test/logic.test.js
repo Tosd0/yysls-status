@@ -1,7 +1,7 @@
 // 判定规则的自检：npm test（等于 node --test）
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classify, cstDate, DAYS, parseList, record, view } from "../src/logic.js";
+import { classify, cstDate, DAYS, maxAge, parseList, record, view } from "../src/logic.js";
 
 const SAMPLE = `\
 正式区 1001 10001 5 3 0 正式大服大世界服1 45.253.181.184:10400:12:1 12001 h72-ms-prod.netease.com 1
@@ -64,4 +64,11 @@ test("页面数据：近 30 天逐天补齐，最后一天是今天", () => {
   assert.deepEqual(v.days.at(-2), { date: "2026-11-04", checks: 0, up: null, worst: null });
   assert.equal(v.status, "down");
   assert.deepEqual(v.machines, []);
+});
+
+test("接口缓存卡在下一轮结果最早写进来时过期，到点没等到就 10 秒后再问", () => {
+  assert.equal(maxAge(1000, 1000), 185); // 刚检测完：缓存到上次检测后 3 分 05 秒
+  assert.equal(maxAge(1000, 1150), 35);
+  assert.equal(maxAge(1000, 1185), 10); // 到点了还是旧数据
+  assert.equal(maxAge(1000, 9000), 10); // 检测停了很久也不会缓存太久
 });
