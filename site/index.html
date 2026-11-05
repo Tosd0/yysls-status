@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>燕云十六声服务器状态</title>
-<meta name="description" content="燕云十六声服务器状态（非官方）：登录服务器能不能连上、近 30 天的可用情况，以及停服和异常记录">
+<title>燕云十六声（国服）服务器状态</title>
+<meta name="description" content="燕云十六声（国服）服务器状态（非官方）：登录服务器能不能连上、近 30 天的可用情况，以及停服和异常记录">
 <meta name="color-scheme" content="light dark">
 <link rel="preload" href="/fonts/EBGaramond-Latin-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/Jost-Latin-Variable.woff2" as="font" type="font/woff2" crossorigin>
@@ -67,6 +67,8 @@ a:hover { text-decoration-color: currentColor; }
   margin: 0; font: 500 40px/1.3 var(--serif); color: var(--gilt); letter-spacing: .04em;
 }
 .masthead h1 span { white-space: nowrap; }
+/* 「国服」缩小，手机上整个「燕云十六声（国服）」还能挤在一行 */
+.masthead h1 small { font-size: .5em; letter-spacing: 0; }
 .masthead .caps {
   margin: 8px 0 0; font: 500 15px/1.5 var(--serif); letter-spacing: .14em; color: var(--ink-muted);
 }
@@ -230,7 +232,7 @@ footer p + p { margin-top: 8px; }
 <body class="intro">
 <main>
   <header class="masthead">
-    <h1><span>燕云十六声</span> <span>服务器状态</span></h1>
+    <h1><span>燕云十六声<small>（国服）</small></span> <span>服务器状态</span></h1>
     <p class="caps">WHERE WINDS MEET · SERVER STATUS</p>
     <p class="meta">本页数据仅供参考，一切以<a href="https://www.yysls.cn/news/update/" target="_blank" rel="noopener">官方公告</a>为准 · 检查间隔 3 分钟</p>
   </header>
@@ -528,7 +530,7 @@ function render(d) {
     g.append(el("p", "meta num", `${name} · ${up} / ${ms.length}`));
     const comb = el("div", "comb");
     const off = d.status === "maintenance" ? "maintenance" : "down";
-    comb.append(...ms.map((m) => tick(m.ok ? "ok" : off, `${m.name} · ${m.ok ? `${m.ms} ms` : "连不上"}`, "grid-pick", k++)));
+    comb.append(...ms.map((m) => tick(m.ok ? "ok" : off, `${m.name} · ${m.ok ? `正常 · ${m.ms} ms` : off === "maintenance" ? "维护" : "异常"}`, "grid-pick", k++)));
     g.append(comb);
     return g;
   }));
