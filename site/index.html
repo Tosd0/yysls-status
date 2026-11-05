@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>燕云服务器状态</title>
-<meta name="description" content="燕云十六声服务器状态（非官方）：登录入口能不能连上、近 30 天可用情况和停服记录">
+<title>燕云十六声服务器状态</title>
+<meta name="description" content="燕云十六声服务器状态（非官方）：登录服务器能不能连上、近 30 天的可用情况，以及停服和异常记录">
 <style>
 :root {
   --bg: #f6f5f2; --card: #ffffff; --text: #1d1d1f; --muted: #6e6e73; --line: #e3e1dc;
@@ -70,9 +70,9 @@ a { color: inherit; }
   </section>
 
   <section>
-    <h2>登录入口机器</h2>
+    <h2>登录服务器</h2>
     <div class="grid" id="grid"></div>
-    <p class="pick" id="grid-pick">点一个方块看是哪台机器</p>
+    <p class="pick" id="grid-pick">点一个方块看是哪台服务器</p>
   </section>
 
   <section>
@@ -83,13 +83,13 @@ a { color: inherit; }
   </section>
 
   <section>
-    <h2>停服记录</h2>
+    <h2>停服和异常记录</h2>
     <ol id="incidents"></ol>
-    <p class="note">开始时间是第一次检测到异常的时间，实际可能更早几分钟。</p>
+    <p class="note">因为每隔几分钟才测一次，这里记的是第一次测到异常的时间，实际开始的时间会早一点。</p>
   </section>
 
   <footer>
-    这里只检测能不能连上官方登录入口，连得上不代表所有玩法都正常。一切以
+    这里只检测能不能连上官方登录服务器，连得上不代表所有玩法都正常。一切以
     <a href="https://www.yysls.cn/news/update/" target="_blank" rel="noopener">官方公告</a>和游戏内公告为准。
     · <a href="https://github.com/Tosd0/yysls-status" target="_blank" rel="noopener">源码</a>
   </footer>
@@ -131,14 +131,14 @@ function render(d) {
   $("now-dot").className = `dot s-${d.status}`;
   $("now-label").textContent = LABEL[d.status];
   $("now-meta").textContent = d.total
-    ? `${d.total} 台入口机器里 ${d.ok} 台能连上 · 最后检测 ${at(d.checked_at)}（${span(now - d.checked_at)}前）`
+    ? `${d.total} 台登录服务器里 ${d.ok} 台能连上 · 最后检测 ${at(d.checked_at)}（${span(now - d.checked_at)}前）`
     : `没拉到官方服务器列表 · 最后检测 ${at(d.checked_at)}（${span(now - d.checked_at)}前）`;
   const late = now - d.checked_at > 30 * 60;
   $("stale").hidden = !late;
-  if (late) $("stale").textContent = `数据已经 ${span(now - d.checked_at)}没更新了，检测任务可能延迟了。`;
+  if (late) $("stale").textContent = `数据已经 ${span(now - d.checked_at)} 没更新了，可能是定时检测延迟了，过会儿再来看看。`;
 
   // 刷新后旧的说明可能已经过时，先清回提示语
-  $("grid-pick").textContent = "点一个方块看是哪台机器";
+  $("grid-pick").textContent = "点一个方块看是哪台服务器";
   $("bars-pick").textContent = "点一根柱子看当天情况";
   $("grid").replaceChildren(...d.machines.map((m) =>
     cell(m.ok ? "s-up" : "s-down", `${m.name} · ${m.ok ? `${m.ms} ms` : "连不上"}`, "grid-pick")));
@@ -146,7 +146,7 @@ function render(d) {
   $("bars").replaceChildren(...d.days.map((day) => {
     const name = dayFmt.format(new Date(day.date));
     const info = day.checks
-      ? `${name} · ${day.worst === "up" ? "全天正常" : `最差：${SHORT[day.worst]}`} · 正常占 ${Math.round(day.up * 100)}% · ${day.checks} 次检测`
+      ? `${name} · ${day.worst === "up" ? "全天正常" : `最差：${SHORT[day.worst]}`} · 可用率 ${Math.round(day.up * 100)}% · ${day.checks} 次检测`
       : `${name} · 没有数据`;
     return cell(day.worst ? `s-${day.worst}` : "", info, "bars-pick");
   }));
@@ -158,7 +158,10 @@ function render(d) {
     badge.textContent = SHORT[it.worst];
     const when = document.createElement("span");
     when.className = "when";
-    when.textContent = it.end
+    // 从第一次检测起就不正常的事件，真正几点开始的不知道，不写开始时间和时长
+    const before = it.start === d.first_check ? `${at(it.start)} 开始检测时就已经是这样了` : "";
+    if (before) when.textContent = it.end ? `${before}，${at(it.end)} 恢复` : `${before}，到现在还没恢复`;
+    else when.textContent = it.end
       ? `${at(it.start)} → ${at(it.end)}，持续 ${span(it.end - it.start)}`
       : `${at(it.start)} 起，还没恢复，已持续 ${span(now - it.start)}`;
     li.append(badge, when);
@@ -166,7 +169,7 @@ function render(d) {
   });
   if (!items.length) {
     const li = document.createElement("li");
-    li.textContent = `从 ${at(d.first_check)} 开始检测以来没有停服记录`;
+    li.textContent = `${at(d.first_check)} 开始检测，到现在还没出过停服或异常`;
     items.push(li);
   }
   $("incidents").replaceChildren(...items);
