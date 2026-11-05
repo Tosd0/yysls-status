@@ -75,10 +75,12 @@ export default {
 
   async fetch(request, env) {
     if (new URL(request.url).pathname !== "/status.json") return new Response("not found", { status: 404 });
+    // 公开接口：允许别的网站在浏览器里直接读
+    const cors = { "Access-Control-Allow-Origin": "*" };
     const state = await env.KV.get("state", "json");
-    if (!state) return new Response("no data yet", { status: 503 });
+    if (!state) return new Response("no data yet", { status: 503, headers: cors });
     return Response.json(view(state, Math.floor(Date.now() / 1000)), {
-      headers: { "Cache-Control": "public, max-age=60" },
+      headers: { ...cors, "Cache-Control": "public, max-age=60" },
     });
   },
 };

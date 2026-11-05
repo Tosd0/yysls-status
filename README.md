@@ -33,6 +33,27 @@
 
 Cloudflare Worker 每 3 分钟跑一次探测，结果累积在 Workers KV 里，访问 `/status.json` 就能拿到页面要的数据。页面部署在 Netlify，请求 `/data/status.json` 时由 Netlify 反向代理到 Worker，国内访客不用直连 workers.dev。页面只需要部署一次，数据更新了也不用重新部署。
 
+## 公开接口
+
+其他网站、wiki、机器人可以直接读页面用的同一份数据，浏览器里跨域请求也行：
+
+```
+GET https://yysls-status.netlify.app/data/status.json
+```
+
+- 数据每 3 分钟更新一次，接口有 60 秒缓存，没必要请求得比这更频繁。
+- 请用上面这个地址。`workers.dev` 那个源地址在国内基本打不开，也没有缓存。
+- 表里列出的字段会保持不变；没列出的字段只给本站页面用，随时可能调整。
+
+| 字段 | 含义 |
+|---|---|
+| `status` | 最近一次检测的结果：`up` 运行正常、`partial` 部分异常、`down` 停服中、`unknown` 检测失败 |
+| `checked_at` | 最近一次检测的时间，Unix 秒 |
+| `ok` / `total` | 能连上的服务器数 / 列表里的服务器总数 |
+| `first_check` | 本站开始检测的时间，Unix 秒 |
+| `days[]` | 近 30 天，从早到晚：`date` 北京时间日期，`up` 当天正常的检测占比（0～1，没数据为 `null`），`worst` 当天最差的状态 |
+| `incidents[]` | 最近的停服和异常事件，新的在前：`start`、`end` 为 Unix 秒，`end` 为 `null` 表示还没恢复，`worst` 是期间最差的状态。`start` 等于 `first_check` 时，说明本站开始检测前就已经停了，真实开始时间未知 |
+
 ## 常用命令
 
 ```bash
