@@ -1,0 +1,20 @@
+name = "yysls-status"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+account_id = "cf209b51088d1b98ef487ebd8f9b1d57"
+
+[triggers]
+crons = ["*/3 * * * *"]
+
+# 绑定到自己的 Prober 入口：每组服务器交给单独一次运行去测，各自有 50 个子请求的额度
+[[services]]
+binding = "PROBER"
+service = "yysls-status"
+entrypoint = "Prober"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "d00956a092d04f85bc4245bd61ff19e9"
+
+[observability]
+enabled = true

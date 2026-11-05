@@ -6,7 +6,7 @@
 
 ## 怎么判断的
 
-每 5～15 分钟读一次官方服务器列表（游戏登录前读的就是这份），对列表里每台登录服务器做一次 TCP 握手。失败的补测一次，两次都失败才算连不上。
+每 3 分钟读一次官方服务器列表（游戏登录前读的就是这份），对列表里每台登录服务器做一次 TCP 握手。失败的补测一次，两次都失败才算连不上。
 
 | 状态 | 条件 |
 |---|---|
@@ -23,31 +23,21 @@
 
 | 路径 | 是什么 |
 |---|---|
-| `probe.py` | 拉列表、握手、更新 `data/` |
-| `test_probe.py` | 判定规则的自检，`python3 test_probe.py` |
-| `data/history.jsonl` | 每次检测一行 |
-| `data/status.json` | 页面读的全部数据 |
+| `src/logic.js` | 判定规则、按天统计、事件合并 |
+| `src/worker.js` | Cloudflare Worker：定时探测（分组交给 `Prober` 入口去测），`/status.json` 给页面数据 |
+| `test/logic.test.js` | 判定规则的自检 |
+| `wrangler.toml` | Worker 的配置：定时、KV 存储 |
 | `site/` | 静态页，部署在 Netlify |
-| `.github/workflows/probe.yml` | 定时跑探测、提交数据 |
 
 ## 数据怎么到页面
 
-GitHub Actions 定时跑 `probe.py`，把 `data/` 提交回仓库。页面部署在 Netlify，请求 `/data/*` 时由 Netlify 反向代理到本仓库的原始文件，国内访客不用直连 GitHub。页面只需要部署一次，数据更新了也不用重新部署。
+Cloudflare Worker 每 3 分钟跑一次探测，结果累积在 Workers KV 里，访问 `/status.json` 就能拿到页面要的数据。页面部署在 Netlify，请求 `/data/status.json` 时由 Netlify 反向代理到 Worker，国内访客不用直连 workers.dev。页面只需要部署一次，数据更新了也不用重新部署。
 
-部署页面：
-
-```bash
-npx netlify-cli deploy --prod --no-build --dir site
-```
-
-## 本机跑
+## 常用命令
 
 ```bash
-python3 probe.py
-```
-
-开着 TUN 模式的代理时，代理会先替程序把连接接下来，不管服务器通不通都显示连上，所以结果不准。macOS 上可以绑定真实网卡绕开：
-
-```bash
-PROBE_IFACE=en0 python3 probe.py
+npm test                                               # 跑判定规则的自检
+npx wrangler@4 deploy                                  # 部署 Worker
+npx wrangler@4 tail                                    # 看 Worker 的实时日志
+npx netlify-cli deploy --prod --no-build --dir site    # 部署页面
 ```

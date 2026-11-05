@@ -1,2 +1,2 @@
-# 数据由 GitHub Actions 提交在仓库里，Netlify 在海外替访客去 GitHub 取，国内访客不用直连 GitHub
-/data/*  https://raw.githubusercontent.com/Tosd0/yysls-status/main/data/:splat  200
+# 数据由 Cloudflare Worker 提供，Netlify 在海外替访客去取，国内访客不用直连 workers.dev
+/data/status.json  https://yysls-status.yukine0v0.workers.dev/status.json  200

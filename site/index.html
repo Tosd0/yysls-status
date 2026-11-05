@@ -56,7 +56,7 @@ a { color: inherit; }
 <body>
 <main>
   <h1>燕云十六声 服务器状态</h1>
-  <p class="sub">玩家自建的非官方页面 · 每 5～15 分钟检测一次 · 时间为北京时间</p>
+  <p class="sub">玩家自建的非官方页面 · 每 3 分钟检测一次 · 时间为北京时间</p>
 
   <section aria-live="polite">
     <div class="now">
@@ -133,9 +133,9 @@ function render(d) {
   $("now-meta").textContent = d.total
     ? `${d.total} 台登录服务器里 ${d.ok} 台能连上 · 最后检测 ${at(d.checked_at)}（${span(now - d.checked_at)}前）`
     : `没拉到官方服务器列表 · 最后检测 ${at(d.checked_at)}（${span(now - d.checked_at)}前）`;
-  const late = now - d.checked_at > 30 * 60;
+  const late = now - d.checked_at > 15 * 60;
   $("stale").hidden = !late;
-  if (late) $("stale").textContent = `数据已经 ${span(now - d.checked_at)} 没更新了，可能是定时检测延迟了，过会儿再来看看。`;
+  if (late) $("stale").textContent = `数据已经 ${span(now - d.checked_at)}没更新了，可能是定时检测延迟了，过会儿再来看看。`;
 
   // 刷新后旧的说明可能已经过时，先清回提示语
   $("grid-pick").textContent = "点一个方块看是哪台服务器";
