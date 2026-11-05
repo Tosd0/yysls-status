@@ -21,8 +21,8 @@
   --gilt: #82603a; --mark: #a3302b;
   --slip: #e3b84b; --on-slip: #4a2410; --shadow-slip: 1px 2px 4px #4a24102e;
   --focus-ring: 0 0 0 2px #f5f1e8, 0 0 0 4px #2a2622;
-  /* 状态色：状态页的老规矩（绿 / 黄 / 红），色相往这套色板里的松绿、赭黄、朱砂靠；在地色上都 ≥3:1 */
-  --ok: #4a7c59; --warn: #a87822; --bad: #a3302b; --empty: #e0d8c8;
+  /* 状态色：状态页的老规矩（绿 / 黄 / 红，停服维护用蓝），色相往这套色板里的松绿、赭黄、朱砂、靛青靠；在地色上都 ≥3:1 */
+  --ok: #4a7c59; --warn: #a87822; --bad: #a3302b; --maint: #3f6188; --empty: #e0d8c8;
   --serif: "EB Garamond", "Noto Serif SC", "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", STSong, SimSun, serif;
   --sans: Jost, "Noto Sans SC", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --axis: 28px;
@@ -35,7 +35,7 @@
     --gilt: #e6c28b; --mark: #c84a3e;
     --shadow-slip: 1px 2px 4px #00000080;
     --focus-ring: 0 0 0 2px #1c1a17, 0 0 0 4px #eee8de;
-    --ok: #79a886; --warn: #e3b84b; --bad: #c84a3e; --empty: #35312a;
+    --ok: #79a886; --warn: #e3b84b; --bad: #c84a3e; --maint: #8fa8c9; --empty: #35312a;
   }
 }
 :root[data-theme="lacquer"] {
@@ -44,7 +44,7 @@
   --gilt: #e6c28b; --mark: #c84a3e;
   --shadow-slip: 1px 2px 4px #00000080;
   --focus-ring: 0 0 0 2px #1c1a17, 0 0 0 4px #eee8de;
-  --ok: #79a886; --warn: #e3b84b; --bad: #c84a3e; --empty: #35312a;
+  --ok: #79a886; --warn: #e3b84b; --bad: #c84a3e; --maint: #8fa8c9; --empty: #35312a;
 }
 
 * { box-sizing: border-box; }
@@ -82,6 +82,7 @@ a:hover { text-decoration-color: currentColor; }
 .now[data-s="up"] .bar { background: var(--ok); }
 .now[data-s="partial"] .bar { background: var(--warn); }
 .now[data-s="down"] .bar { background: var(--bad); }
+.now[data-s="maintenance"] .bar { background: var(--maint); }
 .now { --display: clamp(52px, 14vw, 88px); }
 .word {
   margin: 0; font: 500 var(--display)/1.05 var(--serif); letter-spacing: .06em; color: var(--ink);
@@ -99,6 +100,10 @@ a:hover { text-decoration-color: currentColor; }
   font: 600 13px/1.6 var(--sans); letter-spacing: .1em;
 }
 .stale-text { margin: 8px 0 0; max-width: 32em; }
+.notices:empty { display: none; }
+.notices { margin: 16px 0 0; }
+.notices p { display: flex; align-items: baseline; gap: 8px; margin: 0; max-width: 40em; }
+.notices p + p { margin-top: 4px; }
 /* 下次检测：字和倒计时中间夹一根细线，金色 3 分钟从左走到右；检测中线卷成小环转圈，结果回来再展开 */
 .facts .next { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .next[hidden] { display: none; }
@@ -129,6 +134,7 @@ section { margin-top: 64px; }
 .tick.ok { background: var(--ok); }
 .tick.partial { background: var(--warn); }
 .tick.down { background: var(--bad); }
+.tick.maintenance { background: var(--maint); }
 .tick:focus { outline: none; }
 .tick:hover, .tick.on, .tick:focus-visible { box-shadow: var(--focus-ring); z-index: 1; }
 
@@ -157,6 +163,7 @@ section { margin-top: 64px; }
 .key.ok { background: var(--ok); }
 .key.partial { background: var(--warn); }
 .key.down { background: var(--bad); }
+.key.maintenance { background: var(--maint); }
 
 /* 记录：挂在一根竖线上，竖线上下各多出 24px */
 .log { position: relative; margin: 0; padding: 24px 0 24px 12px; list-style: none; }
@@ -169,6 +176,7 @@ section { margin-top: 64px; }
 .log .kind i { display: inline-block; width: 10px; height: 10px; }
 .log .kind i.down { background: var(--bad); }
 .log .kind i.partial { background: var(--warn); }
+.log .kind i.maintenance { background: var(--maint); }
 .log .kind .latin { color: var(--ink-muted); }
 .log .when { margin: 4px 0 0; font: 300 19px/1.35 var(--sans); }
 .log .dur { margin: 2px 0 0; }
@@ -237,6 +245,7 @@ footer p + p { margin-top: 8px; }
       <p class="meta num" id="now-meta"></p>
       <p class="meta num next" id="next" aria-hidden="true" hidden><span id="next-label">下次检测</span><svg class="dial" viewBox="0 0 66 24" width="66" height="24"><path class="track" id="dial-track"/><path class="fill" id="dial-fill"/></svg><span class="clock" id="next-clock"></span></p>
     </div>
+    <div class="notices" id="notices"></div>
     <div id="stale" hidden>
       <span class="slip">数据延迟</span>
       <p class="meta stale-text" id="stale-text"></p>
@@ -263,6 +272,7 @@ footer p + p { margin-top: 8px; }
       <ul class="legend meta" aria-hidden="true">
         <li><span class="key ok"></span>全天正常</li>
         <li><span class="key partial"></span>出现过部分异常</li>
+        <li><span class="key maintenance"></span>出现过停服维护</li>
         <li><span class="key down"></span>出现过停服</li>
         <li><span class="key"></span>没有数据</li>
       </ul>
@@ -284,10 +294,11 @@ footer p + p { margin-top: 8px; }
 </main>
 
 <script>
-const LABEL = { up: "运行正常", partial: "部分异常", down: "停服中", unknown: "检测失败" };
-const EN = { up: "All servers reachable", partial: "Partial outage", down: "Servers down", unknown: "Check failed" };
-const SHORT = { up: "正常", partial: "部分异常", down: "停服" };
-const SHORT_EN = { partial: "Partial outage", down: "Down" };
+// maintenance：连不上，但官方提前发了停服维护公告
+const LABEL = { up: "运行正常", partial: "部分异常", maintenance: "停服维护", down: "停服中", unknown: "检测失败" };
+const EN = { up: "All servers reachable", partial: "Partial outage", maintenance: "Under maintenance", down: "Servers down", unknown: "Check failed" };
+const SHORT = { up: "正常", partial: "部分异常", maintenance: "停服维护", down: "停服" };
+const SHORT_EN = { partial: "Partial outage", maintenance: "Maintenance", down: "Down" };
 const timeFmt = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false,
 });
@@ -450,6 +461,20 @@ function render(d) {
     $("now-count").textContent = "没拉到服务器列表";
   }
 
+  // 官方停服公告：正在维护的那条，加上还没开始或还没维护完的。已经维护完的不再提
+  const noticeKey = (n) => `${n.title}@${n.start}`;
+  const done = new Set(d.incidents.filter((i) => i.end && i.notice).map((i) => noticeKey(i.notice)));
+  const shown = new Map();
+  for (const n of [d.incidents[0]?.end === null ? d.incidents[0].notice : null, ...(d.notices ?? [])]) {
+    if (n && !done.has(noticeKey(n))) shown.set(noticeKey(n), n);
+  }
+  $("notices").replaceChildren(...[...shown.values()].map((n) => {
+    const p = el("p", "meta num");
+    const end = n.end ? `，预计 ${sameDay(n.start, n.end) ? clockFmt.format(n.end * 1000) : at(n.end)} 结束` : "";
+    p.append(el("i", `key ${n.planned ? "maintenance" : "down"}`), el("span", "", `官方公告「${n.title}」：${at(n.start)} 起停服${end}`));
+    return p;
+  }));
+
   // 登录服务器：单人服和大世界服分两排
   resetPick("grid-pick", "点一个方块看是哪台服务器");
   const groups = [
@@ -463,7 +488,8 @@ function render(d) {
     const up = ms.filter((m) => m.ok).length;
     g.append(el("p", "meta num", `${name} · ${up} / ${ms.length}`));
     const comb = el("div", "comb");
-    comb.append(...ms.map((m) => tick(m.ok ? "ok" : "down", `${m.name} · ${m.ok ? `${m.ms} ms` : "连不上"}`, "grid-pick", k++)));
+    const off = d.status === "maintenance" ? "maintenance" : "down";
+    comb.append(...ms.map((m) => tick(m.ok ? "ok" : off, `${m.name} · ${m.ok ? `${m.ms} ms` : "连不上"}`, "grid-pick", k++)));
     g.append(comb);
     return g;
   }));
@@ -488,7 +514,9 @@ function render(d) {
     const li = el("li");
     const kind = el("p", "kind");
     kind.style.margin = "0";
-    kind.append(el("i", it.worst), el("span", "", SHORT[it.worst]), el("span", "latin", SHORT_EN[it.worst]));
+    // 挂着提前排好的停服公告，整次事件都算停服维护，哪怕公告是连不上之后才发的；临时、紧急停服照样按停服算
+    const k = it.notice?.planned ? "maintenance" : it.worst;
+    kind.append(el("i", k), el("span", "", SHORT[k]), el("span", "latin", SHORT_EN[k]));
     const when = el("p", "when num");
     const dur = el("p", "dur meta");
     // 从第一次检测起就不正常的事件，真正几点开始的不知道，不写开始时间和时长
@@ -503,6 +531,7 @@ function render(d) {
       dur.textContent = `还没恢复，已持续 ${span(now - it.start)}`;
     }
     li.append(kind, when, dur);
+    if (it.notice) li.append(el("p", "dur meta", `官方公告「${it.notice.title}」`));
     return li;
   });
   if (!items.length) items.push(el("li", "calm", `${at(d.first_check)} 开始检测，到现在还没出过停服或异常。`));

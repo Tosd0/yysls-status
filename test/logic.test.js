@@ -72,3 +72,63 @@ test("接口缓存卡在下一轮结果最早写进来时过期，到点没等�
   assert.equal(maxAge(1000, 1185), 10); // 到点了还是旧数据
   assert.equal(maxAge(1000, 9000), 10); // 检测停了很久也不会缓存太久
 });
+
+const STOP = { title: "11月5日停服维护公告", planned: true, start: cst("2026-11-05T18:30:00"), end: null };
+const URGENT = { ...STOP, title: "11月5日临时停服公告", planned: false };
+const at = (state, iso, s, notices) => record(state, { t: cst(iso), s, ok: 0, total: 65, notices });
+
+test("停服维护：连不上又有停服公告罩着，算停服维护，可用率照样扣", () => {
+  let s = at(null, "2026-11-05T18:00:00", "up", [STOP]);
+  s = at(s, "2026-11-05T18:15:00", "partial", null); // 开始前半小时内就算，公告没读到就沿用上一次的
+  assert.equal(s.last.s, "maintenance");
+  s = at(s, "2026-11-05T18:30:00", "down", [STOP]);
+  assert.equal(s.last.s, "maintenance");
+  assert.deepEqual(s.incidents, [{ start: cst("2026-11-05T18:15:00"), end: null, worst: "maintenance", notice: STOP }]);
+  assert.deepEqual(s.days["2026-11-05"], { checks: 3, ups: 1, worst: "maintenance" });
+});
+
+test("停服维护一直算到恢复，之后再连不上、公告也过期了就是停服", () => {
+  let s = at(null, "2026-11-05T19:00:00", "down", [STOP]);
+  s = at(s, "2026-11-07T19:00:00", "down", [STOP]); // 公告只管一天，但事件挂着公告
+  assert.equal(s.last.s, "maintenance");
+  s = at(s, "2026-11-07T19:03:00", "up", [STOP]);
+  s = at(s, "2026-11-07T20:00:00", "down", [STOP]);
+  assert.equal(s.last.s, "down");
+  assert.deepEqual(s.incidents[0], { start: cst("2026-11-07T20:00:00"), end: null, worst: "down" });
+});
+
+test("临时、紧急停服：公告挂到事件上，但照样算停服", () => {
+  let s = at(null, "2026-11-05T18:30:00", "down", [URGENT]);
+  s = at(s, "2026-11-05T18:33:00", "partial", [URGENT]);
+  assert.equal(s.last.s, "partial");
+  assert.deepEqual(s.last.notice, URGENT);
+  assert.deepEqual(s.incidents, [{ start: cst("2026-11-05T18:30:00"), end: null, worst: "down", notice: URGENT }]);
+  assert.deepEqual(s.days["2026-11-05"], { checks: 2, ups: 0, worst: "down" });
+});
+
+test("先连不上、后发停服公告：整次事件挂上公告，最差状态还是停服", () => {
+  let s = at(null, "2026-11-05T17:00:00", "down", []);
+  assert.equal(s.last.s, "down");
+  s = at(s, "2026-11-05T18:30:00", "down", [STOP]);
+  assert.equal(s.last.s, "maintenance");
+  assert.deepEqual(s.incidents, [{ start: cst("2026-11-05T17:00:00"), end: null, worst: "down", notice: STOP }]);
+});
+
+test("当天既有停服维护又有意外停服，柱子按停服算", () => {
+  let s = at(null, "2026-11-05T19:00:00", "down", [STOP]);
+  s = at(s, "2026-11-05T20:00:00", "up", [STOP]);
+  assert.equal(s.days["2026-11-05"].worst, "maintenance");
+  s = at(s, "2026-11-06T08:00:00", "down", []); // 换了一天，公告列表里也没有停服公告了
+  s = at(s, "2026-11-06T09:00:00", "up", []);
+  s = at(s, "2026-11-06T10:00:00", "partial", [{ ...STOP, start: cst("2026-11-06T10:00:00") }]);
+  assert.equal(s.days["2026-11-06"].worst, "down");
+});
+
+test("页面数据：只给还没过期的停服公告，事件没挂公告的给 null", () => {
+  const later = { title: "11月20日停服维护公告", planned: true, start: cst("2026-11-20T06:00:00"), end: cst("2026-11-20T10:00:00") };
+  let s = at(null, "2026-11-05T17:00:00", "down", []);
+  s = at(s, "2026-11-05T17:03:00", "up", [STOP, later]);
+  assert.deepEqual(view(s, cst("2026-11-06T12:00:00")).notices, [STOP, later]);
+  assert.deepEqual(view(s, cst("2026-11-07T12:00:00")).notices, [later]);
+  assert.equal(view(s, cst("2026-11-07T12:00:00")).incidents[0].notice, null);
+});

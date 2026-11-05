@@ -12,10 +12,13 @@
 |---|---|
 | 运行正常 | 90% 以上的服务器能连上 |
 | 部分异常 | 能连上的不到 90%，但至少有一台 |
-| 停服中 | 一台都连不上 |
+| 停服维护 | 部分异常或一台都连不上，同时官方提前发了停服维护公告，正好在公告说的停服时间里 |
+| 停服中 | 一台都连不上，没有停服维护公告；临时、紧急停服也算这一种 |
 | 检测失败 | 没拉到官方服务器列表，这次不算数 |
 
 一次或连续几次检测不正常，算作一次事件，开始时间取第一次测到异常的时间。
+
+停服公告读的是游戏登录界面的公告列表，每 3 分钟跟着检测一起读。标题带「停服」的才算停服公告，「不停服维护」「在线修复」这类维护期间照常能登录，不算。停服公告分两种：标题带「临时」「紧急」的是出了故障才决定停服，照样算停服，页面上附上公告标题；其余的是提前排好的停服维护。公告写的停服开始前半小时起就算数；写了结束时间的到结束为止，没写的从开始算一天。一次事件只要挂上了停服维护公告，就一直算停服维护，直到服务器恢复。停服维护期间登录不了，所以和停服一样计入不可用，只是颜色和标签不同。
 
 这里只检测能不能连上登录服务器，能连上不代表所有玩法都正常，一切以官方公告为准。
 
@@ -24,8 +27,9 @@
 | 路径 | 是什么 |
 |---|---|
 | `src/logic.js` | 判定规则、按天统计、事件合并 |
-| `src/worker.js` | Cloudflare Worker：定时探测（分组交给 `Prober` 入口去测），`/status.json` 给页面数据 |
-| `test/logic.test.js` | 判定规则的自检 |
+| `src/notice.js` | 从游戏内公告里挑出停服公告，读出停服时间 |
+| `src/worker.js` | Cloudflare Worker：定时探测（分组交给 `Prober` 入口去测）、读游戏内公告，`/status.json` 给页面数据 |
+| `test/` | 判定规则和公告解析的自检 |
 | `wrangler.toml` | Worker 的配置：定时、KV 存储 |
 | `site/` | 静态页，部署在 Netlify |
 
@@ -47,17 +51,18 @@ GET https://yysls-status.netlify.app/data/status.json
 
 | 字段 | 含义 |
 |---|---|
-| `status` | 最近一次检测的结果：`up` 运行正常、`partial` 部分异常、`down` 停服中、`unknown` 检测失败 |
+| `status` | 最近一次检测的结果：`up` 运行正常、`partial` 部分异常、`maintenance` 停服维护、`down` 停服中、`unknown` 检测失败 |
 | `checked_at` | 最近一次检测的时间，Unix 秒 |
 | `ok` / `total` | 能连上的服务器数 / 列表里的服务器总数 |
 | `first_check` | 本站开始检测的时间，Unix 秒 |
-| `days[]` | 近 30 天，从早到晚：`date` 北京时间日期，`up` 当天正常的检测占比（0～1，没数据为 `null`），`worst` 当天最差的状态 |
-| `incidents[]` | 最近的停服和异常事件，新的在前：`start`、`end` 为 Unix 秒，`end` 为 `null` 表示还没恢复，`worst` 是期间最差的状态。`start` 等于 `first_check` 时，说明本站开始检测前就已经停了，真实开始时间未知 |
+| `notices[]` | 游戏内公告里还没过期的停服公告，可能还没开始：`title` 公告标题，`planned` 为 `true` 是提前排好的停服维护、`false` 是临时或紧急停服，`start`、`end` 为公告写的停服起止时间（Unix 秒），没写结束时间的 `end` 为 `null` |
+| `days[]` | 近 30 天，从早到晚：`date` 北京时间日期，`up` 当天正常的检测占比（0～1，没数据为 `null`），`worst` 当天最差的状态，从好到坏依次是 `up`、`partial`、`maintenance`、`down` |
+| `incidents[]` | 最近的停服和异常事件，新的在前：`start`、`end` 为 Unix 秒，`end` 为 `null` 表示还没恢复，`worst` 是期间最差的状态，`notice` 是这次事件对应的官方停服公告（格式同 `notices[]`），没有为 `null`。`notice.planned` 为 `true` 的事件就是停服维护。`start` 等于 `first_check` 时，说明本站开始检测前就已经停了，真实开始时间未知 |
 
 ## 常用命令
 
 ```bash
-npm test                                               # 跑判定规则的自检
+npm test                                               # 跑判定规则和公告解析的自检
 npx wrangler@4 deploy                                  # 部署 Worker
 npx wrangler@4 tail                                    # 看 Worker 的实时日志
 npx netlify-cli deploy --prod --no-build --dir site    # 部署页面

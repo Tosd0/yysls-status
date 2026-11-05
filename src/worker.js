@@ -2,8 +2,12 @@
 import { connect } from "cloudflare:sockets";
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { classify, maxAge, parseList, record, view } from "./logic.js";
+import { isPlanned, parseStopTime, stopPosts } from "./notice.js";
 
 const LIST_URL = "https://h72.update.nieapps.com/server_list_prod_b.txt";
+// 游戏登录界面的公告：列表在 game_notice_index，每条的正文在同目录下以 post_name 为文件名
+const NOTICE_URL = "https://h72.update.nieapps.com/game_notice/";
+const UA = { headers: { "User-Agent": "yysls-status" } };
 const TIMEOUT_MS = 4000;
 // 平台限制同一时间最多 6 个连接处在建立中，多出来的会排队；排队的时间不能算进超时，所以自己控制并发
 const POOL = 6;
@@ -43,6 +47,19 @@ async function probeAll(machines) {
   return results;
 }
 
+// 公告列表里的停服公告，带上从正文读出来的停服时间；读不出时间的跳过
+async function fetchStopNotices(now) {
+  const resp = await fetch(NOTICE_URL + "game_notice_index", UA);
+  if (!resp.ok) throw new Error(`notice index HTTP ${resp.status}`);
+  const notices = [];
+  for (const p of stopPosts(await resp.json()).slice(0, 3)) {
+    const body = await fetch(NOTICE_URL + encodeURIComponent(p.post_name), UA);
+    const time = body.ok ? parseStopTime(await body.text(), now) : null;
+    if (time) notices.push({ title: p.post_title, planned: isPlanned(p.post_title), ...time });
+  }
+  return notices;
+}
+
 // 只能通过服务绑定调用，外面访问不到
 export class Prober extends WorkerEntrypoint {
   async probe(machines) {
@@ -52,10 +69,13 @@ export class Prober extends WorkerEntrypoint {
 
 export default {
   async scheduled(controller, env) {
+    const t = Math.floor(controller.scheduledTime / 1000);
+    // 和探测同时读公告。没读到给 null，record 会沿用上一次的
+    const noticesP = fetchStopNotices(t).catch((e) => (console.log("notices failed:", String(e)), null));
     let machines = [];
     let list_modified = null;
     try {
-      const resp = await fetch(LIST_URL, { headers: { "User-Agent": "yysls-status" } });
+      const resp = await fetch(LIST_URL, UA);
       if (!resp.ok) throw new Error(`server list HTTP ${resp.status}`);
       list_modified = resp.headers.get("Last-Modified");
       const all = parseList(await resp.text());
@@ -67,10 +87,11 @@ export default {
       machines = [];
     }
     const ok = machines.filter((m) => m.ok).length;
-    const t = Math.floor(controller.scheduledTime / 1000);
-    const rec = { t, ok, total: machines.length, s: classify(ok, machines.length), machines, list_modified };
-    await env.KV.put("state", JSON.stringify(record(await env.KV.get("state", "json"), rec)));
-    console.log(rec.s, `${ok}/${machines.length}`);
+    const notices = await noticesP;
+    const rec = { t, ok, total: machines.length, s: classify(ok, machines.length), machines, list_modified, notices };
+    const state = record(await env.KV.get("state", "json"), rec);
+    await env.KV.put("state", JSON.stringify(state));
+    console.log(state.last.s, `${ok}/${machines.length}`, `notices=${state.last.notices.length}`);
   },
 
   async fetch(request, env) {

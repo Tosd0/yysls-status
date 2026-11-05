@@ -1,4 +1,5 @@
 // 判定规则和状态累积：纯函数，Worker 和测试共用
+import { coveringNotice, liveNotices } from "./notice.js";
 
 export const OK_RATIO = 0.9; // 能连上的比例不低于这个算正常
 export const DAYS = 30;
@@ -6,7 +7,7 @@ export const MAX_INCIDENTS = 20;
 export const PERIOD = 180; // 和 wrangler.toml 里的 cron 一致，每 3 分钟检测一次
 // 服务器都连得上时一轮几秒就写进 KV；有连不上的要等超时，会晚到 20 秒左右，那段靠 10 秒重试补上
 const MIN_RUN = 5;
-const RANK = { up: 0, partial: 1, down: 2 };
+const RANK = { up: 0, partial: 1, maintenance: 2, down: 3 };
 const CST_MS = 8 * 3600 * 1000;
 
 // 一行一个入口：区名 _ 组号 _ _ _ 服名 ip:端口:_:_ 服号 主控域名 _。同一台服务器有好几个端口，测第一个就够
@@ -32,8 +33,17 @@ export function classify(ok, total) {
 export const cstDate = (t) => new Date(t * 1000 + CST_MS).toISOString().slice(0, 10);
 
 // 把一次检测并进状态：按北京时间分天计数，连续不正常合成一次事件。检测失败的那次只更新 last，不计数也不打断事件
+// rec.notices 是这次读到的停服公告，没读到（null）就沿用上一次的
 export function record(state, rec) {
   const s = state ? structuredClone(state) : { first_check: rec.t, days: {}, incidents: [] };
+  const open = s.incidents[0]?.end === null ? s.incidents[0] : null;
+  rec = { ...rec, notices: rec.notices ?? s.last?.notices ?? [] };
+  // 连不上时有官方停服公告罩着就挂上公告：提前排好的算停服维护，临时、紧急的照样算停服。
+  // 事件挂上公告后一直沿用到恢复，公告写的时间过了也不会变
+  if (rec.s === "partial" || rec.s === "down") {
+    const notice = open?.notice ?? coveringNotice(rec.notices, rec.t);
+    if (notice) rec = { ...rec, s: notice.planned ? "maintenance" : rec.s, notice };
+  }
   s.last = rec;
   if (rec.s === "unknown") return s;
 
@@ -44,13 +54,14 @@ export function record(state, rec) {
   const oldest = cstDate(rec.t - (DAYS - 1) * 86400);
   for (const d of Object.keys(s.days)) if (d < oldest) delete s.days[d];
 
-  const open = s.incidents[0]?.end === null ? s.incidents[0] : null;
   if (rec.s === "up") {
     if (open) open.end = rec.t;
   } else if (!open) {
-    s.incidents = [{ start: rec.t, end: null, worst: rec.s }, ...s.incidents].slice(0, MAX_INCIDENTS);
-  } else if (RANK[rec.s] > RANK[open.worst]) {
-    open.worst = rec.s;
+    const incident = { start: rec.t, end: null, worst: rec.s, ...(rec.notice && { notice: rec.notice }) };
+    s.incidents = [incident, ...s.incidents].slice(0, MAX_INCIDENTS);
+  } else {
+    if (RANK[rec.s] > RANK[open.worst]) open.worst = rec.s;
+    if (rec.notice && !open.notice) open.notice = rec.notice; // 先连不上、后发公告的，公告也挂到整次事件上
   }
   return s;
 }
@@ -79,7 +90,8 @@ export function view(state, now) {
     list_modified: last.list_modified ?? null,
     first_check: state.first_check,
     machines: last.machines ?? [],
+    notices: liveNotices(last.notices ?? [], now),
     days,
-    incidents: state.incidents,
+    incidents: state.incidents.map((i) => ({ ...i, notice: i.notice ?? null })),
   };
 }
