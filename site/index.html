@@ -104,7 +104,7 @@ a:hover { text-decoration-color: currentColor; }
 .notices { margin: 16px 0 0; }
 .notices p { display: flex; align-items: baseline; gap: 8px; margin: 0; max-width: 40em; }
 .notices p + p { margin-top: 4px; }
-/* 下次检测：字和倒计时中间夹一根细线，金色 3 分钟从左走到右；检测中线卷成小环转圈，结果回来再展开 */
+/* 下次检测：字和倒计时中间夹一根细线，金色 3 分钟从左走到右；检测中线从左端卷成小环转圈，结果回来从环顶抽开、拉回成线 */
 .facts .next { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .next[hidden] { display: none; }
 .next .clock { color: var(--ink); }
@@ -366,58 +366,97 @@ function resetPick(id, hint) {
 // Worker 每 3 分钟检测一次
 const PERIOD = 180;
 
-// 倒计时那根线：平时是进度线；到点了结果还没回来，两端往上翘、弯成首尾相接的小环，一段金色在环上转圈，
-// 结果回来再展开成线。弯的时候线长不变，所以环的直径由线长定：64px 的线弯成直径约 20px 的环
+// 倒计时那根线：平时是进度线，金色 3 分钟从左走到右。到点了结果还没回来，线从左端卷起来，收成首尾相接的小环，
+// 一段金色顺时针绕着环转；结果回来，等金色那段的尾巴转到环顶，环就从顶上那一点被抽开，像抽纸带一样拉回成线。
+// 卷的时候线长不变，所以环的周长就是线长：64px 的线卷成直径约 20px 的环
 const DIAL_LEN = 64, DIAL_H = 24, DIAL_PAD = 1; // 和 .dial 的 viewBox 对应
+const DIAL_R = DIAL_LEN / (2 * Math.PI);
+// 转圈每秒 0.8 圈，金色那段占环的 28%；后面三个是卷起、金色缩成一段、抽开各用的秒数
+const SPIN = 0.8, DASH = 0.28, WIND = 0.9, DRAIN = 0.9, UNWIND = 1.1;
 const still = matchMedia("(prefers-reduced-motion: reduce)");
-// u 是弯曲程度（0 直线、1 圆环）；len、start 是金色那段的长度和起点，按全长的百分比算
-const dial = { checking: false, progress: 0, u: 0, len: 0, start: 0, last: 0, raf: 0 };
+// mode：line 进度线、wind 往里卷、spin 转圈、unwind 往外抽、hold 减少动态效果时停着的满环。
+// len 是金色那段的长度，按全长的比例；clock 是动画自己的时钟，标签页切到后台时停走，切回来接着播
+const dial = { checking: false, progress: 0, mode: "", len: 0, t0: 0, h0: 0, g: 0, clock: 0, last: 0, raf: 0 };
 
-// 从中点往两边量，处处同样弯；弯好后左边贴齐、上下居中，卷成环时紧挨着前面的字
-function bend(u) {
-  const k = (2 * Math.PI * u) / DIAL_LEN, pts = [];
-  for (let i = 0; i <= 48; i++) {
-    const s = (i / 48 - 0.5) * DIAL_LEN;
-    pts.push(k < 1e-6 ? [s, 0] : [Math.sin(k * s) / k, (Math.cos(k * s) - 1) / k]);
-  }
-  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
-  const dx = DIAL_PAD - Math.min(...xs), dy = DIAL_H / 2 - (Math.min(...ys) + Math.max(...ys)) / 2;
-  return pts.map(([x, y]) => [x + dx, y + dy]);
+// 三次 Hermite 曲线：t 从 0 到 1 时从 0 走到 1，起点和终点的速度是 v0、v1（按整段算）
+const hermite = (t, v0, v1) => (t ** 3 - 2 * t ** 2 + t) * v0 + (3 * t ** 2 - 2 * t ** 3) + (t ** 3 - t ** 2) * v1;
+
+// 抽出 s（0 是闭合的环，1 是整根直线）时的样子：一段圆弧，在切点接上往右的直线。
+// 往里卷时线从环底进去（down 为真），往外抽时从环顶出来，这样卷、转、抽都是顺时针。
+// 路径从线的左端画起，也就是卷在最里面的那头；弯好后左边贴齐、上下居中，卷成环时紧挨着前面的字
+function dialPath(s, down) {
+  const phi = 2 * Math.PI * (1 - s), sy = down ? -1 : 1;
+  const w = phi > Math.PI / 2 ? DIAL_R : DIAL_R * Math.sin(phi);
+  const h = DIAL_R * (1 - Math.cos(Math.min(phi, Math.PI)));
+  const x0 = DIAL_PAD + w, y0 = DIAL_H / 2 - (sy * h) / 2; // 切点
+  const pt = (th) => `${(x0 - DIAL_R * Math.sin(th)).toFixed(2)} ${(y0 + sy * DIAL_R * (1 - Math.cos(th))).toFixed(2)}`;
+  const arc = `A${DIAL_R.toFixed(3)} ${DIAL_R.toFixed(3)} 0 0 ${down ? 0 : 1} `;
+  let d = "M" + pt(phi);
+  if (phi > 1e-4) d += arc + pt(phi / 2) + arc + pt(0); // 整圈的起点终点重合，拆成两个半弧才画得出来
+  return d + (s > 0 ? `L${(x0 + s * DIAL_LEN).toFixed(2)} ${y0.toFixed(2)}` : "Z");
 }
 
-function drawDial() {
-  const pts = bend(dial.u);
-  let total = 0;
-  for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-  const d = "M" + pts.map(([x, y]) => `${x.toFixed(2)} ${y.toFixed(2)}`).join("L");
+// off 是金色那段的起点离路径起点多远，按全长的比例
+function drawDial(s, down, len, off) {
+  const d = dialPath(s, down), gold = Math.min(1, Math.max(0, len)) * DIAL_LEN;
   for (const p of [$("dial-track"), $("dial-fill")]) {
     p.setAttribute("d", d);
-    p.setAttribute("stroke-width", 1 + dial.u / 2); // 环比线粗一点，小尺寸下才看得清
+    p.setAttribute("stroke-width", 1.5 - s / 2); // 环比线粗一点，小尺寸下才看得清
   }
-  const len = Math.min(1, Math.max(0, dial.len / 100)) * total;
-  $("dial-fill").setAttribute("stroke-dasharray", `${len} ${total - len}`);
-  $("dial-fill").setAttribute("stroke-dashoffset", (-dial.start / 100) * total);
+  $("dial-fill").setAttribute("stroke-dasharray", `${gold.toFixed(2)} ${(DIAL_LEN - gold).toFixed(2)}`);
+  $("dial-fill").setAttribute("stroke-dashoffset", (-off * DIAL_LEN).toFixed(2));
 }
 
-function stepDial(t) {
-  const dt = dial.last ? Math.min(0.1, (t - dial.last) / 1000) : 0;
-  dial.last = t;
-  const spin = dial.checking && dial.u > 0.9 && !still.matches;
-  const uT = dial.checking ? 1 : 0;
-  // 卷成环之前金色保持满格，卷好后缩成一小段转圈；减少动态效果时就停在一个满的环上
-  const lenT = !dial.checking ? dial.progress * 100 : spin ? 28 : 100;
-  // 倒计时每秒走的那一点直接跳过去，不用为它一直跑动画
-  const small = !dial.checking && dial.u < 1e-3 && Math.abs(lenT - dial.len) < 2;
-  const ease = still.matches || small ? 1 : 1 - Math.exp(-dt / 0.16);
-  dial.u += (uT - dial.u) * ease;
-  dial.len += (lenT - dial.len) * ease;
-  // 转圈时顺时针走，一圈约 1.1 秒；不转时回到线头，挑近的方向
-  const back = ((-dial.start % 100) + 150) % 100 - 50;
-  dial.start = spin ? (((dial.start - dt * 90) % 100) + 100) % 100 : dial.start + back * ease;
-  const settled = !spin && Math.abs(uT - dial.u) < 1e-3 && Math.abs(lenT - dial.len) < 0.05 && Math.abs(back) < 0.05;
-  if (settled) Object.assign(dial, { u: uT, len: lenT, start: 0, last: 0, raf: 0 });
-  drawDial();
-  if (!settled) dial.raf = requestAnimationFrame(stepDial);
+// 每段的起止速度都和前后接上：卷到最后线头的速度、金色尾巴开始退的速度、转圈的速度、刚开始抽的速度是同一个
+function stepDial(now) {
+  const dt = dial.last ? Math.min(0.1, (now - dial.last) / 1000) : 0;
+  dial.last = now;
+  const c = (dial.clock += dt), p = dial.progress, on = dial.checking;
+  let run = true;
+  if (still.matches) {
+    // 减少动态效果时不播动画，检测中停在一个满的金环上
+    Object.assign(dial, { mode: on ? "hold" : "line", len: on ? 1 : p });
+    drawDial(on ? 0 : 1, false, dial.len, 0);
+    run = false;
+  } else {
+    // 第一次画直接摆成当前该有的样子，不播动画
+    if (!dial.mode) Object.assign(dial, on ? { mode: "spin", t0: c - DRAIN, h0: DASH - (SPIN * DRAIN) / 2, g: 0 } : { mode: "line", len: p });
+    if (dial.mode === "hold") Object.assign(dial, { mode: "spin", t0: c, h0: 1, g: 0 });
+    if (dial.mode === "line" && on) Object.assign(dial, { mode: "wind", t0: c });
+    if (dial.mode === "wind") {
+      const t = (c - dial.t0) / WIND;
+      if (t < 1) drawDial(1 - hermite(t, 0, SPIN * WIND), true, dial.len + (1 - dial.len) * t, 0);
+      // 环在底下合上，金色的尾巴从合上的地方接着顺时针退
+      else Object.assign(dial, { mode: "spin", t0: dial.t0 + WIND, h0: 1.5, g: 0.5, len: 1 });
+    }
+    if (dial.mode === "spin") {
+      // 金色的头从停着慢慢加速到转圈的速度，尾巴追上来，缩成一段；g 是尾巴的位置，从环顶顺时针量
+      const t = (c - dial.t0) / DRAIN;
+      const len = t < 1 ? 1 - (1 - DASH) * hermite(t, (SPIN * DRAIN) / (1 - DASH), 0) : DASH;
+      const g = dial.h0 + SPIN * DRAIN * (t < 1 ? t ** 3 - t ** 4 / 2 : t - 0.5) - len;
+      // 结果回来了，等尾巴转过环顶就从那里往外抽；抽的起点往回倒一点，补上这一帧多转的
+      if (!on && t >= 1 && Math.floor(g) > Math.floor(dial.g)) Object.assign(dial, { mode: "unwind", t0: c - (g % 1) / SPIN, len: DASH });
+      else {
+        dial.g = g;
+        drawDial(0, false, len, g);
+      }
+    }
+    if (dial.mode === "unwind") {
+      // 金色那段跟着纸带走，最后落在线的左端，长度收成当前的进度
+      const t = (c - dial.t0) / UNWIND;
+      if (t < 1) drawDial(hermite(t, SPIN * UNWIND, 0), false, dial.len + (p - dial.len) * hermite(t, 0, 0), 0);
+      else Object.assign(dial, { mode: "line", len: p });
+    }
+    if (dial.mode === "line") {
+      // 倒计时每秒走的那一点直接跳过去，不用为它一直跑动画；差得多（换了一轮数据）才慢慢收过去
+      const gap = p - dial.len;
+      dial.len += Math.abs(gap) < 0.02 ? gap : gap * (1 - Math.exp(-dt / 0.2));
+      drawDial(1, false, dial.len, 0);
+      run = on || dial.len !== p;
+    }
+  }
+  dial.raf = run ? requestAnimationFrame(stepDial) : 0;
+  if (!run) dial.last = 0;
 }
 
 function kickDial() {
