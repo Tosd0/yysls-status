@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>燕云服务器状态</title>
+<meta name="description" content="燕云十六声服务器状态（非官方）：登录入口能不能连上、近 30 天可用情况和停服记录">
+<style>
+:root {
+  --bg: #f6f5f2; --card: #ffffff; --text: #1d1d1f; --muted: #6e6e73; --line: #e3e1dc;
+  --up: #2f9e5b; --partial: #d99a1c; --down: #d4483b; --unknown: #a1a1a6; --empty: #e9e7e2;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141414; --card: #1e1e1f; --text: #f2f2f2; --muted: #a0a0a5; --line: #2e2e30;
+    --up: #3fbf74; --partial: #e6ac36; --down: #ec5f52; --unknown: #6e6e73; --empty: #2a2a2c;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.6 -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
+h1 { font-size: 22px; margin: 0; letter-spacing: .02em; }
+h2 { font-size: 15px; margin: 0 0 12px; color: var(--muted); font-weight: 600; }
+.sub { margin: 2px 0 24px; color: var(--muted); font-size: 13px; }
+section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+.now { display: flex; gap: 14px; align-items: center; }
+.dot { width: 14px; height: 14px; border-radius: 50%; flex: none; background: var(--unknown); }
+.now .dot { width: 18px; height: 18px; box-shadow: 0 0 0 6px color-mix(in srgb, currentColor 18%, transparent); }
+.label { font-size: 22px; font-weight: 700; }
+.meta, .note, .pick { color: var(--muted); font-size: 13px; }
+.stale { margin: 12px 0 0; color: var(--partial); font-size: 13px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(18px, 1fr)); gap: 5px; }
+.grid button, .bars button { border: 0; padding: 0; cursor: pointer; background: var(--empty); }
+.grid button { aspect-ratio: 1; border-radius: 4px; }
+.bars { display: flex; gap: 3px; height: 36px; }
+.bars button { flex: 1; border-radius: 3px; min-width: 0; }
+button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-top: 6px; }
+.pick { min-height: 1.6em; margin: 10px 0 0; }
+.s-up { background: var(--up) !important; color: var(--up); }
+.s-partial { background: var(--partial) !important; color: var(--partial); }
+.s-down { background: var(--down) !important; color: var(--down); }
+.s-unknown { background: var(--unknown) !important; color: var(--unknown); }
+ol { list-style: none; margin: 0; padding: 0; }
+li { display: flex; gap: 10px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+li:first-child { border-top: 0; padding-top: 0; }
+.badge { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; color: #fff !important; }
+.when { font-variant-numeric: tabular-nums; }
+footer { color: var(--muted); font-size: 12px; line-height: 1.8; padding: 0 2px; }
+a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>燕云十六声 服务器状态</h1>
+  <p class="sub">玩家自建的非官方页面 · 每 5～15 分钟检测一次 · 时间为北京时间</p>
+
+  <section aria-live="polite">
+    <div class="now">
+      <span class="dot" id="now-dot"></span>
+      <div>
+        <div class="label" id="now-label">加载中…</div>
+        <div class="meta" id="now-meta"></div>
+      </div>
+    </div>
+    <p class="stale" id="stale" hidden></p>
+  </section>
+
+  <section>
+    <h2>登录入口机器</h2>
+    <div class="grid" id="grid"></div>
+    <p class="pick" id="grid-pick">点一个方块看是哪台机器</p>
+  </section>
+
+  <section>
+    <h2>近 30 天</h2>
+    <div class="bars" id="bars"></div>
+    <div class="axis"><span>30 天前</span><span>今天</span></div>
+    <p class="pick" id="bars-pick">点一根柱子看当天情况</p>
+  </section>
+
+  <section>
+    <h2>停服记录</h2>
+    <ol id="incidents"></ol>
+    <p class="note">开始时间是第一次检测到异常的时间，实际可能更早几分钟。</p>
+  </section>
+
+  <footer>
+    这里只检测能不能连上官方登录入口，连得上不代表所有玩法都正常。一切以
+    <a href="https://www.yysls.cn/news/update/" target="_blank" rel="noopener">官方公告</a>和游戏内公告为准。
+    · <a href="https://github.com/Tosd0/yysls-status" target="_blank" rel="noopener">源码</a>
+  </footer>
+</main>
+
+<script>
+const LABEL = { up: "运行正常", partial: "部分异常", down: "停服中", unknown: "检测失败" };
+const SHORT = { up: "正常", partial: "部分异常", down: "停服" };
+const timeFmt = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: "Asia/Shanghai", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false,
+});
+const dayFmt = new Intl.DateTimeFormat("zh-CN", { timeZone: "UTC", month: "long", day: "numeric" });
+const $ = (id) => document.getElementById(id);
+const at = (sec) => timeFmt.format(sec * 1000);
+
+function span(sec) {
+  const m = Math.max(1, Math.round(sec / 60));
+  if (m < 60) return `${m} 分钟`;
+  const h = Math.floor(m / 60), d = Math.floor(h / 24);
+  if (d) return `${d} 天${h % 24 ? ` ${h % 24} 小时` : ""}`;
+  return `${h} 小时${m % 60 ? ` ${m % 60} 分` : ""}`;
+}
+
+// 方块和柱子共用：点按 / 聚焦时把说明写到下面那行，手机上也能看
+function cell(cls, info, pickId) {
+  const b = document.createElement("button");
+  b.className = cls;
+  b.title = info;
+  b.setAttribute("aria-label", info);
+  const show = () => ($(pickId).textContent = info);
+  b.addEventListener("click", show);
+  b.addEventListener("focus", show);
+  b.addEventListener("mouseenter", show);
+  return b;
+}
+
+function render(d) {
+  const now = Date.now() / 1000;
+  $("now-dot").className = `dot s-${d.status}`;
+  $("now-label").textContent = LABEL[d.status];
+  $("now-meta").textContent = d.total
+    ? `${d.total} 台入口机器里 ${d.ok} 台能连上 · 最后检测 ${at(d.checked_at)}（${span(now - d.checked_at)}前）`
+    : `没拉到官方服务器列表 · 最后检测 ${at(d.checked_at)}（${span(now - d.checked_at)}前）`;
+  const late = now - d.checked_at > 30 * 60;
+  $("stale").hidden = !late;
+  if (late) $("stale").textContent = `数据已经 ${span(now - d.checked_at)}没更新了，检测任务可能延迟了。`;
+
+  // 刷新后旧的说明可能已经过时，先清回提示语
+  $("grid-pick").textContent = "点一个方块看是哪台机器";
+  $("bars-pick").textContent = "点一根柱子看当天情况";
+  $("grid").replaceChildren(...d.machines.map((m) =>
+    cell(m.ok ? "s-up" : "s-down", `${m.name} · ${m.ok ? `${m.ms} ms` : "连不上"}`, "grid-pick")));
+
+  $("bars").replaceChildren(...d.days.map((day) => {
+    const name = dayFmt.format(new Date(day.date));
+    const info = day.checks
+      ? `${name} · ${day.worst === "up" ? "全天正常" : `最差：${SHORT[day.worst]}`} · 正常占 ${Math.round(day.up * 100)}% · ${day.checks} 次检测`
+      : `${name} · 没有数据`;
+    return cell(day.worst ? `s-${day.worst}` : "", info, "bars-pick");
+  }));
+
+  const items = d.incidents.map((it) => {
+    const li = document.createElement("li");
+    const badge = document.createElement("span");
+    badge.className = `badge s-${it.worst}`;
+    badge.textContent = SHORT[it.worst];
+    const when = document.createElement("span");
+    when.className = "when";
+    when.textContent = it.end
+      ? `${at(it.start)} → ${at(it.end)}，持续 ${span(it.end - it.start)}`
+      : `${at(it.start)} 起，还没恢复，已持续 ${span(now - it.start)}`;
+    li.append(badge, when);
+    return li;
+  });
+  if (!items.length) {
+    const li = document.createElement("li");
+    li.textContent = `从 ${at(d.first_check)} 开始检测以来没有停服记录`;
+    items.push(li);
+  }
+  $("incidents").replaceChildren(...items);
+}
+
+async function load() {
+  try {
+    const r = await fetch("/data/status.json", { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    render(await r.json());
+  } catch (e) {
+    $("now-dot").className = "dot s-unknown";
+    $("now-label").textContent = "数据加载失败";
+    $("now-meta").textContent = "过一会儿刷新试试";
+  }
+}
+load();
+setInterval(load, 2 * 60 * 1000);
+</script>
+</body>
+</html>
