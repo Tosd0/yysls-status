@@ -102,6 +102,9 @@ a:hover { text-decoration-color: currentColor; }
 .en {
   margin: 8px 0 0; font: italic 400 22px/1.35 var(--serif); color: var(--ink-muted);
 }
+/* 不正常时这个状态持续了多久，紧跟在英文下面 */
+.since { margin: 12px 0 0; font: 400 15px/1.5 var(--sans); }
+.since[hidden] { display: none; }
 .facts { margin: 24px 0 0; }
 .facts p { margin: 0; }
 .facts .count { font: 300 19px/1.35 var(--sans); font-variant-numeric: tabular-nums; }
@@ -227,7 +230,7 @@ footer p + p { margin-top: 8px; }
 /* 出场顺序：先标题，再线，最后正文。只在第一次加载时播放 */
 @media (prefers-reduced-motion: no-preference) {
   .intro .word .ch { animation: rise 700ms var(--ease) both; animation-delay: calc(var(--i) * 80ms); }
-  .intro .en, .intro .facts { animation: fade 600ms ease both; animation-delay: calc(var(--n) * 80ms + 500ms); }
+  .intro .en, .intro .since, .intro .facts { animation: fade 600ms ease both; animation-delay: calc(var(--n) * 80ms + 500ms); }
   .intro .now .bar { animation: drawX 1.2s var(--ease) both; }
   .intro .head .line, .intro .timeline .axis { animation: drawX 1.2s var(--ease) both; animation-delay: .4s; }
   .intro .now .bar { animation-name: drawXr; }
@@ -256,6 +259,7 @@ footer p + p { margin-top: 8px; }
     <!-- 只播报状态和台数；时间每秒都在走，放进播报区会一直念 -->
     <p class="word" id="now-word" aria-live="polite"><span class="ch" style="--i:0">加</span><span class="ch" style="--i:1">载</span><span class="ch" style="--i:2">中</span></p>
     <p class="en" id="now-en" style="--n:3">Loading</p>
+    <p class="since num" id="now-since" style="--n:3" hidden></p>
     <div class="facts" id="now-facts" style="--n:3">
       <p class="count" id="now-count" aria-live="polite">&nbsp;</p>
       <p class="meta num" id="now-meta"></p>
@@ -373,6 +377,7 @@ function setWord(text) {
     return s;
   }));
   $("now-en").style.setProperty("--n", text.length);
+  $("now-since").style.setProperty("--n", text.length);
   $("now-facts").style.setProperty("--n", text.length);
 }
 
@@ -489,7 +494,17 @@ function put(id, text) {
 
 // 「最后检测」、下次检测倒计时和过期提示跟着时间走，每秒更新，不用等新数据
 function meta(d) {
-  const age = Date.now() / 1000 - d.checked_at;
+  const now = Date.now() / 1000, age = now - d.checked_at;
+  // 不正常时，从这次事件开始算持续了多久；第一次检测时就不正常的，真正几点开始的不知道，只能说至少
+  const open = d.incidents[0]?.end === null ? d.incidents[0] : null;
+  const since = d.status !== "up" && d.status !== "unknown" && open;
+  $("now-since").hidden = !since;
+  if (since) {
+    const start = sameDay(open.start, now) ? clockFmt.format(open.start * 1000) : at(open.start);
+    put("now-since", open.start === d.first_check
+      ? `至少已持续 ${span(now - open.start)}`
+      : `已持续 ${span(now - open.start)} · ${start} 起`);
+  }
   put("now-meta", `最后检测 ${at(d.checked_at)} · ${span(age)}前`);
   // 到点了结果还没拿到就说正在检测；晚到下下轮都该出结果了，多半是检测停了，倒计时不再显示
   const left = Math.ceil(PERIOD - age);
@@ -632,6 +647,7 @@ async function load() {
     $("now-en").textContent = "Could not load data";
     $("now-count").textContent = "过一会儿刷新试试";
     $("now-meta").textContent = "";
+    $("now-since").hidden = true;
     $("next").hidden = true;
     dial.checking = false;
   }
