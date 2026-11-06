@@ -23,6 +23,15 @@ function nearest(y, mo, d, h, mi, ref) {
 export const stopPosts = (index) =>
   index.filter((p) => p.post_title?.includes("停服") && !p.post_title.includes("不停服"));
 
+// 不停服维护写在版本更新公告的正文里，标题不提；单独的「不停服维护公告」标题里有。同名的（分端发的同一份）只留一条
+export const onlinePosts = (index) => {
+  const seen = new Set();
+  return index.filter((p) => /版本更新|不停服/.test(p.post_title ?? "") && !seen.has(p.post_name) && seen.add(p.post_name));
+};
+
+// 正文里写着「不停服维护」才算，时间取正文第一处
+export const parseOnlineTime = (text, now) => (text.includes("不停服维护") ? parseStopTime(text, now) : null);
+
 // 标题带「临时」「紧急」的是出了故障才决定的停服，照样算停服；其余的是提前排好的停服维护
 export const isPlanned = (title) => !/临时|紧急/.test(title);
 
@@ -41,11 +50,11 @@ export function parseStopTime(text, now) {
 }
 
 // 公告管到什么时候：写了结束时间就到结束，没写就从开始算一天
-const until = (n) => n.end ?? n.start + NO_END;
+export const until = (n) => n.end ?? n.start + NO_END;
 
-// t 这一刻罩着它的停服公告，没有就是 null
+// t 这一刻罩着它的停服公告，没有就是 null；不停服维护公告不算
 export const coveringNotice = (notices, t) =>
-  notices.find((n) => t >= n.start - EARLY && t <= until(n)) ?? null;
+  notices.find((n) => !n.online && t >= n.start - EARLY && t <= until(n)) ?? null;
 
 // 还没过期的停服公告，页面拿来提前预告
 export const liveNotices = (notices, now) => notices.filter((n) => until(n) > now);

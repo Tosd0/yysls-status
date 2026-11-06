@@ -79,3 +79,23 @@ test("公告管的时间段：开始前半小时起，到结束为止；没写�
   assert.equal(coveringNotice([fixed], fixed.end + 1), null);
   assert.deepEqual(liveNotices([open, fixed], fixed.end), [open]);
 });
+
+test("不停服维护：版本更新公告的正文里写着才算，同名的只留一条", async () => {
+  const { onlinePosts, parseOnlineTime } = await import("../src/notice.js");
+  const index = [
+    { post_name: "h72_kaifu_notice_261105", post_title: "11月5日临时维护完成公告" },
+    { post_name: "h72_butingfu_notice_261106", post_title: "11月6日2.9.5A版本更新公告", mpk_url: "x" },
+    { post_name: "h72_butingfu_notice_261106", post_title: "11月6日2.9.5A版本更新公告", mpk_url: "y" },
+    { post_name: "b", post_title: "11月13日不停服维护公告" },
+  ];
+  assert.deepEqual(onlinePosts(index).map((p) => p.post_name), ["h72_butingfu_notice_261106", "b"]);
+  // 2026-11-06 那条公告正文开头，颜色标记 #8c5823 紧贴着年份
+  const body = '{"type": 5, "text": "游侠亲启：\\n      十六巷计划于#8c58232026年11月6日05:10:00~10:00:00进行不停服维护更新#E，不停服维护状态期间可正常登录体验游戏"}';
+  assert.deepEqual(parseOnlineTime(body, cst("2026-11-06T09:50:00")), { start: cst("2026-11-06T05:10:00"), end: cst("2026-11-06T10:00:00") });
+  assert.equal(parseOnlineTime("11月6日05:10:00~10:00:00进行停服维护更新", cst("2026-11-06T09:50:00")), null);
+});
+
+test("不停服维护公告不会被当成停服公告罩着", () => {
+  const online = { title: "版本更新", planned: true, online: true, start: cst("2026-11-06T05:10:00"), end: cst("2026-11-06T10:00:00") };
+  assert.equal(coveringNotice([online], cst("2026-11-06T06:00:00")), null);
+});
